@@ -1,0 +1,6 @@
+# Backend – Zion Delivery API
+mysql-connector-python==9.5.0
+fastapi==0.115.6
+PyJWT==2.10.1
+Werkzeug==3.1.3
+uvicorn[standard]>=0.30.0

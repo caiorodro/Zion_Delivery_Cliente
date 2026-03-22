@@ -1,0 +1,17 @@
+# Força LF em scripts shell (necessário para executar no Linux)
+*.sh text eol=lf
+
+# Arquivos Python e texto com LF
+*.py text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.sql text eol=lf
+*.json text eol=lf
+*.cnf text eol=lf
+
+# Binários
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.zip binary
