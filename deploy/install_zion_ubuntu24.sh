@@ -12,14 +12,14 @@ set -Eeuo pipefail
 ############################
 # User-configurable options
 ############################
-DOMAIN="${DOMAIN:-ziondelivery.app.br}"
-DOMAIN_WWW="${DOMAIN_WWW:-www.ziondelivery.app.br}"
+DOMAIN_API="${DOMAIN_API:-ziondelivery.app.br}"
+DOMAIN_APP="${DOMAIN_APP:-loja.ziondelivery.app.br}"
 SERVER_USER="${SERVER_USER:-zion}"
 SERVER_GROUP="${SERVER_GROUP:-zion}"
 BASE_DIR="${BASE_DIR:-/opt/zion}"
 PROJECT_DIR="${PROJECT_DIR:-/opt/zion/Zion_Delivery_Cliente}"
 GIT_REPO_URL="${GIT_REPO_URL:-}"
-GIT_BRANCH="${GIT_BRANCH:-main}"
+GIT_BRANCH="${GIT_BRANCH:-}"
 
 DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-3306}"
@@ -164,9 +164,17 @@ checkout_project() {
   chown -R "${SERVER_USER}:${SERVER_GROUP}" "${BASE_DIR}"
 
   if [[ -d "${PROJECT_DIR}/.git" ]]; then
-    su - "${SERVER_USER}" -c "cd '${PROJECT_DIR}' && git fetch --all && git checkout '${GIT_BRANCH}' && git pull --ff-only"
+    if [[ -n "${GIT_BRANCH}" ]]; then
+      su - "${SERVER_USER}" -c "cd '${PROJECT_DIR}' && git fetch --all && git checkout '${GIT_BRANCH}' && git pull --ff-only origin '${GIT_BRANCH}'"
+    else
+      su - "${SERVER_USER}" -c 'cd "'"${PROJECT_DIR}"'" && git fetch --all && DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short | sed "s@^origin/@@") && git checkout "$DEFAULT_BRANCH" && git pull --ff-only origin "$DEFAULT_BRANCH"'
+    fi
   else
-    su - "${SERVER_USER}" -c "cd '${BASE_DIR}' && git clone --branch '${GIT_BRANCH}' '${GIT_REPO_URL}' 'Zion_Delivery_Cliente'"
+    if [[ -n "${GIT_BRANCH}" ]]; then
+      su - "${SERVER_USER}" -c "cd '${BASE_DIR}' && git clone --branch '${GIT_BRANCH}' '${GIT_REPO_URL}' 'Zion_Delivery_Cliente'"
+    else
+      su - "${SERVER_USER}" -c "cd '${BASE_DIR}' && git clone '${GIT_REPO_URL}' 'Zion_Delivery_Cliente'"
+    fi
   fi
 }
 
@@ -207,9 +215,9 @@ patch_project_configs() {
   sed -i "s|^\s*DB_PASSWORD\s*=.*|    DB_PASSWORD = \"${DB_APP_PASSWORD}\"|" "${backend_cfg}"
   sed -i "s|^\s*API_HOST\s*=.*|    API_HOST = \"${API_HOST}\"|" "${backend_cfg}"
   sed -i "s|^\s*API_PORT\s*=.*|    API_PORT = ${API_PORT}|" "${backend_cfg}"
-  sed -i "s|^\s*URL_API\s*=.*|    URL_API = \"https://${DOMAIN}/api\"|" "${backend_cfg}"
+  sed -i "s|^\s*URL_API\s*=.*|    URL_API = \"https://${DOMAIN_API}\"|" "${backend_cfg}"
 
-  sed -i "s|^\s*URL_API\s*=.*|    URL_API = \"https://${DOMAIN}/api\"|" "${frontend_cfg}"
+  sed -i "s|^\s*URL_API\s*=.*|    URL_API = \"https://${DOMAIN_API}\"|" "${frontend_cfg}"
 }
 
 run_migrations() {
@@ -266,14 +274,14 @@ EOF
 configure_nginx() {
   log "Configuring Nginx reverse proxy"
 
-  cat > /etc/nginx/sites-available/${DOMAIN} <<EOF
+  cat > /etc/nginx/sites-available/${DOMAIN_API} <<EOF
 server {
     listen 80;
-    server_name ${DOMAIN} ${DOMAIN_WWW};
+    server_name ${DOMAIN_API};
 
     client_max_body_size 20m;
 
-    location /api/ {
+    location / {
         proxy_pass http://127.0.0.1:${API_PORT}/;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
@@ -282,6 +290,13 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 120s;
     }
+}
+EOF
+
+  cat > /etc/nginx/sites-available/${DOMAIN_APP} <<EOF
+server {
+    listen 80;
+    server_name ${DOMAIN_APP};
 
     location / {
         proxy_pass http://127.0.0.1:${FLET_PORT}/;
@@ -295,7 +310,8 @@ server {
 }
 EOF
 
-  ln -sf /etc/nginx/sites-available/${DOMAIN} /etc/nginx/sites-enabled/${DOMAIN}
+  ln -sf /etc/nginx/sites-available/${DOMAIN_API} /etc/nginx/sites-enabled/${DOMAIN_API}
+  ln -sf /etc/nginx/sites-available/${DOMAIN_APP} /etc/nginx/sites-enabled/${DOMAIN_APP}
   rm -f /etc/nginx/sites-enabled/default
 
   nginx -t
@@ -316,8 +332,8 @@ enable_https_certbot() {
     --non-interactive \
     --agree-tos \
     -m "${CERTBOT_EMAIL}" \
-    -d "${DOMAIN}" \
-    -d "${DOMAIN_WWW}" \
+    -d "${DOMAIN_API}" \
+    -d "${DOMAIN_APP}" \
     --redirect
 
   certbot renew --dry-run
@@ -334,8 +350,8 @@ Validation commands:
   systemctl status nginx --no-pager
 
   curl -I http://127.0.0.1:${API_PORT}/health
-  curl -I https://${DOMAIN}/api/health
-  curl -I https://${DOMAIN}/
+  curl -I https://${DOMAIN_API}/health
+  curl -I https://${DOMAIN_APP}/
 
 Useful logs:
   journalctl -u zion-backend -f

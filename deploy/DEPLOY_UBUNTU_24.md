@@ -6,13 +6,13 @@ This guide installs the full stack in a new Ubuntu 24.04 server:
 - FastAPI backend service
 - Flet frontend service
 - Nginx reverse proxy
-- HTTPS certificate for ziondelivery.app.br
+- HTTPS certificate for ziondelivery.app.br and loja.ziondelivery.app.br
 
 ## 1. Prerequisites
 
 1. Ubuntu 24.04 LTS server with sudo/root access.
 2. DNS A record for ziondelivery.app.br pointing to this server IP.
-3. DNS A record for www.ziondelivery.app.br pointing to this server IP.
+3. DNS A record for loja.ziondelivery.app.br pointing to this server IP.
 4. Git repository URL for this project.
 5. Email for Lets Encrypt certificate issuance.
 
@@ -39,14 +39,16 @@ Recommended command:
 ```bash
 sudo env \
   GIT_REPO_URL="https://github.com/ORG/REPO.git" \
-  GIT_BRANCH="main" \
   DB_APP_PASSWORD="CHANGE_THIS_STRONG_PASSWORD" \
   CERTBOT_EMAIL="infra@ziondelivery.app.br" \
-  DOMAIN="ziondelivery.app.br" \
-  DOMAIN_WWW="www.ziondelivery.app.br" \
+   DOMAIN_API="ziondelivery.app.br" \
+   DOMAIN_APP="loja.ziondelivery.app.br" \
   ENABLE_HTTPS="1" \
   bash deploy/install_zion_ubuntu24.sh
 ```
+
+If you omit `GIT_BRANCH`, the script clones the repository default branch automatically.
+If you want to force a specific branch, pass it explicitly, for example `GIT_BRANCH="master"`.
 
 ## 4. What the script does
 
@@ -71,7 +73,9 @@ sudo env \
 12. Creates and starts systemd services:
    - zion-backend.service
    - zion-frontend.service
-13. Configures Nginx for /api and / routes.
+13. Configures Nginx with two virtual hosts:
+   - API on ziondelivery.app.br
+   - Flet app on loja.ziondelivery.app.br
 14. Issues HTTPS certificate with certbot and enables redirect HTTP -> HTTPS.
 
 ## 5. Post-install validation
@@ -82,8 +86,8 @@ systemctl status zion-frontend --no-pager
 systemctl status nginx --no-pager
 
 curl -I http://127.0.0.1:8000/health
-curl -I https://ziondelivery.app.br/api/health
-curl -I https://ziondelivery.app.br/
+curl -I https://ziondelivery.app.br/health
+curl -I https://loja.ziondelivery.app.br/
 ```
 
 Expected:
@@ -114,6 +118,8 @@ Disable HTTPS creation in first run:
 sudo env \
   GIT_REPO_URL="https://github.com/ORG/REPO.git" \
   DB_APP_PASSWORD="CHANGE_THIS" \
+   DOMAIN_API="ziondelivery.app.br" \
+   DOMAIN_APP="loja.ziondelivery.app.br" \
   ENABLE_HTTPS="0" \
   bash deploy/install_zion_ubuntu24.sh
 ```
@@ -125,6 +131,8 @@ sudo env \
   GIT_REPO_URL="https://github.com/ORG/REPO.git" \
   DB_APP_PASSWORD="CHANGE_THIS" \
   CERTBOT_EMAIL="infra@ziondelivery.app.br" \
+   DOMAIN_API="ziondelivery.app.br" \
+   DOMAIN_APP="loja.ziondelivery.app.br" \
   MYSQL_MAX_CONNECTIONS="500" \
   bash deploy/install_zion_ubuntu24.sh
 ```

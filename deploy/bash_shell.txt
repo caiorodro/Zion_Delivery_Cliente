@@ -1,0 +1,9 @@
+sudo env \
+GIT_REPO_URL="https://github.com/caiorodro/Zion_Delivery_Cliente.git" \
+GIT_BRANCH="master" \
+DB_APP_PASSWORD="Lsw0tgzvaije@" \
+CERTBOT_EMAIL="caiorodro@gmail.com" \
+DOMAIN_API="ziondelivery.app.br" \
+DOMAIN_APP="loja.ziondelivery.app.br" \
+ENABLE_HTTPS="1" \
+bash /tmp/install_zion_ubuntu24.sh
