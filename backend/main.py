@@ -59,7 +59,7 @@ async def atualizar_produto(id_produto: int, body: dict):
     view = ProdutoView()
 
     try:
-        result = await view.update_produto(id_produto, body)
+        result = view.update_produto(id_produto, body)
     except ValueError as ex:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
