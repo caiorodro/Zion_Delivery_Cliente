@@ -13,12 +13,38 @@ class ProdutoView:
     def __init__(self):
         self.qbase = qBase()
 
+    def _get_preco_column(self, cursor) -> str:
+        """Resolve a coluna de preco disponivel na tabela tb_produto."""
+        cursor.execute(
+            """
+                SELECT COLUMN_NAME
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'tb_produto'
+                  AND COLUMN_NAME IN ('PRECO_DELIVERY', 'PRECO_BALCAO')
+                ORDER BY FIELD(COLUMN_NAME, 'PRECO_DELIVERY', 'PRECO_BALCAO')
+            """
+        )
+        row = cursor.fetchone()
+        return row[0] if row else "PRECO_BALCAO"
+
+    def _build_produto_dict(self, row) -> dict:
+        return Produto(
+            ID_PRODUTO=row[0],
+            DESCRICAO_PRODUTO=row[1],
+            PRECO_DELIVERY=float(row[2]) if isinstance(row[2], Decimal) else (row[2] or 0.0),
+            ID_FAMILIA=row[3],
+            PRODUTO_ATIVO=row[4],
+            FOTO_PRODUTO=self.resolveImage(row[5])
+        ).__dict__
+
     async def get_all_produtos(self) -> List[dict]:
         """Retorna todos os produtos ativos com preço delivery > 0."""
         conn = get_connection()
 
         try:
             cursor = conn.cursor()
+            preco_column = self._get_preco_column(cursor)
 
             historico_join = f"""
                 LEFT JOIN (
@@ -38,12 +64,12 @@ class ProdutoView:
                 SELECT
                     p.ID_PRODUTO,
                     p.DESCRICAO_PRODUTO,
-                    p.PRECO_BALCAO,
+                    p.{preco_column},
                     p.ID_FAMILIA,
                     p.PRODUTO_ATIVO,
                     p.FOTO_PRODUTO
                 FROM tb_produto p
-            """
+            """.format(preco_column=preco_column)
 
             sql += historico_join
 
@@ -60,18 +86,106 @@ class ProdutoView:
 
             result = []
             for row in rows:
-                result.append(
-                    Produto(
-                        ID_PRODUTO=row[0],
-                        DESCRICAO_PRODUTO=row[1],
-                        PRECO_DELIVERY=float(row[2]) if isinstance(row[2], Decimal) else (row[2] or 0.0),
-                        ID_FAMILIA=row[3],
-                        PRODUTO_ATIVO=row[4],
-                        FOTO_PRODUTO=self.resolveImage(row[5])
-                    ).__dict__
-                )
+                result.append(self._build_produto_dict(row))
 
             return result
+        finally:
+            conn.close()
+
+    def update_produto(self, id_produto: int, body: dict) -> dict:
+        """Atualiza um produto da tb_produto pelo ID_PRODUTO."""
+        allowed_fields = {
+            "DESCRICAO_PRODUTO",
+            "PRECO_DELIVERY",
+            "FOTO_PRODUTO",
+            "PRODUTO_ATIVO",
+        }
+
+        payload = {key: value for key, value in body.items() if key in allowed_fields}
+        if not payload:
+            raise ValueError("Informe ao menos um dos campos permitidos para atualização")
+
+        conn = get_connection()
+
+        try:
+            cursor = conn.cursor()
+            preco_column = self._get_preco_column(cursor)
+
+            cursor.execute(
+                "SELECT COUNT(1) FROM tb_produto WHERE ID_PRODUTO = %s",
+                (id_produto,),
+            )
+            exists = cursor.fetchone()
+            if not exists or exists[0] == 0:
+                return {}
+
+            updates = []
+            values = []
+
+            if "DESCRICAO_PRODUTO" in payload:
+                descricao = str(payload["DESCRICAO_PRODUTO"]).strip()
+                if not descricao:
+                    raise ValueError("DESCRICAO_PRODUTO não pode ser vazia")
+                updates.append("DESCRICAO_PRODUTO = %s")
+                values.append(descricao)
+
+            if "PRECO_DELIVERY" in payload:
+                try:
+                    preco = float(payload["PRECO_DELIVERY"])
+                except (TypeError, ValueError):
+                    raise ValueError("PRECO_DELIVERY deve ser numérico")
+                if preco < 0:
+                    raise ValueError("PRECO_DELIVERY deve ser maior ou igual a zero")
+                updates.append(f"{preco_column} = %s")
+                values.append(preco)
+
+            if "FOTO_PRODUTO" in payload:
+                foto_produto = payload["FOTO_PRODUTO"]
+                if foto_produto in (None, ""):
+                    updates.append("FOTO_PRODUTO = %s")
+                    values.append(None)
+                else:
+                    try:
+                        foto_bytes = base64.b64decode(str(foto_produto).strip(), validate=True)
+                    except Exception as ex:
+                        raise ValueError("FOTO_PRODUTO deve estar em base64 válido") from ex
+                    updates.append("FOTO_PRODUTO = %s")
+                    values.append(foto_bytes)
+
+            if "PRODUTO_ATIVO" in payload:
+                try:
+                    produto_ativo = int(payload["PRODUTO_ATIVO"])
+                except (TypeError, ValueError):
+                    raise ValueError("PRODUTO_ATIVO deve ser 0 ou 1")
+                if produto_ativo not in (0, 1):
+                    raise ValueError("PRODUTO_ATIVO deve ser 0 ou 1")
+                updates.append("PRODUTO_ATIVO = %s")
+                values.append(produto_ativo)
+
+            sql = f"UPDATE tb_produto SET {', '.join(updates)} WHERE ID_PRODUTO = %s"
+            values.append(id_produto)
+            cursor.execute(sql, tuple(values))
+            conn.commit()
+
+            select_sql = f"""
+                SELECT
+                    ID_PRODUTO,
+                    DESCRICAO_PRODUTO,
+                    {preco_column},
+                    ID_FAMILIA,
+                    PRODUTO_ATIVO,
+                    FOTO_PRODUTO
+                FROM tb_produto
+                WHERE ID_PRODUTO = %s
+            """
+            cursor.execute(select_sql, (id_produto,))
+            row = cursor.fetchone()
+            cursor.close()
+
+            return self._build_produto_dict(row) if row else {}
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 

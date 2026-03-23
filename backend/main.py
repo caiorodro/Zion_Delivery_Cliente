@@ -48,6 +48,38 @@ async def listar_produtos():
     return await view.get_all_produtos()
 
 
+@app.patch("/produtos/{id_produto}", tags=["Produtos"])
+async def atualizar_produto(id_produto: int, body: dict):
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Body da requisição não pode ser vazio"
+        )
+
+    view = ProdutoView()
+
+    try:
+        result = await view.update_produto(id_produto, body)
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ex)
+        )
+    except Exception as ex:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(ex)
+        )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produto não encontrado"
+        )
+
+    return result
+
+
 @app.get("/familias", tags=["Produtos"])
 async def listar_familias():
     view = ProdutoView()
