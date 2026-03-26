@@ -9,6 +9,7 @@ from views.produto import ProdutoView
 from views.endereco import EnderecoView
 from views.frete import FreteView
 from views.pedido import PedidoView
+from models.produto import ProdutoCreate
 from models.pedido import (
     Pedido, DadosCliente, EnderecoEntrega, ItemPedido, PagamentoPedido
 )
@@ -47,6 +48,39 @@ async def listar_produtos():
     view = ProdutoView()
     return await view.get_all_produtos()
 
+@app.post("/produtos", tags=["Produtos"])
+def criar_produto(body: dict):
+    try:
+        produto = ProdutoCreate(
+            CODIGO_PRODUTO=body["CODIGO_PRODUTO"],
+            CODIGO_PRODUTO_PDV=body["CODIGO_PRODUTO_PDV"],
+            DESCRICAO_PRODUTO=body["DESCRICAO_PRODUTO"],
+            PRECO_BALCAO=body["PRECO_BALCAO"],
+            PRECO_DELIVERY=body["PRECO_DELIVERY"],
+            ID_TRIBUTO=body["ID_TRIBUTO"],
+            ID_FAMILIA=body["ID_FAMILIA"],
+            ID_EMPRESA=body["ID_EMPRESA"],
+            PRODUTO_ATIVO=body["PRODUTO_ATIVO"]
+        )
+
+        view = ProdutoView()
+        return view.create_produto(produto)
+    except KeyError as ke:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Campo obrigatório ausente: {ke}"
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+    except Exception as ex:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(ex)
+        )
+
 
 @app.patch("/produtos/{id_produto}", tags=["Produtos"])
 async def atualizar_produto(id_produto: int, body: dict):
@@ -60,6 +94,44 @@ async def atualizar_produto(id_produto: int, body: dict):
 
     try:
         result = view.update_produto(id_produto, body)
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ex)
+        )
+    except Exception as ex:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(ex)
+        )
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Produto não encontrado"
+        )
+
+    return result
+
+
+@app.patch("/produtos/{id_produto}/ativo", tags=["Produtos"])
+async def atualizar_produto_ativo(id_produto: int, body: dict):
+    if "PRODUTO_ATIVO" not in body:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Informe o campo PRODUTO_ATIVO no body"
+        )
+
+    if len(body) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Este endpoint permite atualizar apenas o campo PRODUTO_ATIVO"
+        )
+
+    view = ProdutoView()
+
+    try:
+        result = view.update_produto(id_produto, {"PRODUTO_ATIVO": body["PRODUTO_ATIVO"]})
     except ValueError as ex:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -207,12 +279,31 @@ def criar_pedido(body: dict):
         )
 
 
+@app.post("/pedidos/robo", tags=["Pedidos"])
+def criar_pedido_robo(body: dict):
+    """Recebe payload do robô e grava em tb_pedido, tb_item_pedido, tb_pedido_pagamento e tb_fila_comanda."""
+    view = PedidoView()
+
+    try:
+        return view.gravar_pedido_robo(body)
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
+    except Exception as ex:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(ex)
+        )
+
+
 @app.get("/pedidos/pendentes", tags=["Pedidos"])
 async def listar_pedidos_pendentes():
     """Retorna todos os pedidos com STATUS_PEDIDO = 0 (Aguardando confirmação)."""
     view = PedidoView()
-    return await view.get_pedidos_pendentes()
-
+    retorno = await view.get_pedidos_pendentes()
+    return retorno
 
 @app.patch("/pedidos/{numero_pedido}/aceitar", tags=["Pedidos"])
 async def aceitar_pedido(numero_pedido: int):
