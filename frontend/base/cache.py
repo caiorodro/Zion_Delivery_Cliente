@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import List
 
@@ -7,6 +8,9 @@ from frontend.base.server import ZionAPI
 from frontend.models.listaProduto import ListaProduto
 from frontend.models.familiaProduto import FamiliaProduto
 from frontend.models.gradeProduto import GradeProduto
+
+
+logger = logging.getLogger(__name__)
 
 
 class CacheManager:
@@ -56,7 +60,10 @@ class CacheManager:
             cls._loaded = True
             return True
         except Exception as ex:
-            print(f"Erro ao baixar dados: {ex}")
+            with open(AppConfig.LOG_FILE, "a", encoding="utf-8") as log_file:
+                log_file.write(f"Erro ao baixar dados da API: {str(ex)}\n")
+
+            logger.exception("Erro ao baixar dados da API")
             return False
 
     @classmethod
@@ -76,7 +83,10 @@ class CacheManager:
             cls._loaded = True
             return True
         except Exception as ex:
-            print(f"Erro ao carregar cache: {ex}")
+            with open(AppConfig.LOG_FILE, "a", encoding="utf-8") as log_file:
+                log_file.write(f"Erro ao carregar cache local: {str(ex)}\n")
+
+            logger.exception("Erro ao carregar cache local")
             return False
 
     @classmethod

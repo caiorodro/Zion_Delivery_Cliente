@@ -1,7 +1,9 @@
 import threading
+import logging
 import flet as ft
 
 from frontend.base.cache import CacheManager
+from frontend.base.logging_setup import setup_frontend_logging
 from frontend.cfg.config import AppConfig
 from frontend.models.sacola import Sacola
 from frontend.style.zControls import zLabel, zTitle
@@ -12,7 +14,23 @@ from frontend.views.pagamento import Pagamento
 from frontend.views.confirmacao import Confirmacao
 
 
+setup_frontend_logging()
+logger = logging.getLogger(__name__)
+
+
+def _thread_excepthook(args: threading.ExceptHookArgs):
+    logger.exception(
+        "Excecao nao tratada em thread '%s'",
+        args.thread.name if args.thread else "unknown",
+        exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+    )
+
+
+threading.excepthook = _thread_excepthook
+
+
 def main(page: ft.Page):
+    logger.info("Inicializando frontend Zion Delivery")
     page.title = "Zion Delivery"
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
@@ -142,26 +160,36 @@ def main(page: ft.Page):
 
     # ─── Download inicial do cardápio ───────────────────────────
     def _init_data():
-        # Tenta carregar cache local primeiro
-        if CacheManager.carregar_cache_local():
-            lbl_loading.value = "Cache carregado! Atualizando..."
+        try:
+            # Tenta carregar cache local primeiro
+            if CacheManager.carregar_cache_local():
+                logger.info("Cache local carregado com sucesso")
+                lbl_loading.value = "Cache carregado! Atualizando..."
+                try:
+                    lbl_loading.update()
+                except Exception:
+                    logger.exception("Falha ao atualizar label de loading")
+
+            # Baixa da API
+            ok = CacheManager.download_e_salvar()
+            if not ok and not CacheManager.is_loaded():
+                logger.error("Sem conexao com API e sem cache local disponivel")
+                lbl_loading.value = "⚠ Sem conexão. Tente novamente."
+                try:
+                    lbl_loading.update()
+                except Exception:
+                    logger.exception("Falha ao atualizar label de erro de conexao")
+                return
+
+            # Navega para a tela de endereço
+            page.go("/endereco")
+        except Exception:
+            logger.exception("Erro nao tratado durante inicializacao de dados do frontend")
+            lbl_loading.value = "⚠ Erro interno. Consulte os logs."
             try:
                 lbl_loading.update()
             except Exception:
-                pass
-
-        # Baixa da API
-        ok = CacheManager.download_e_salvar()
-        if not ok and not CacheManager.is_loaded():
-            lbl_loading.value = "⚠ Sem conexão. Tente novamente."
-            try:
-                lbl_loading.update()
-            except Exception:
-                pass
-            return
-
-        # Navega para a tela de endereço
-        page.go("/endereco")
+                logger.exception("Falha ao atualizar label de erro interno")
 
     page.views.append(splash)
     page.go("/splash")

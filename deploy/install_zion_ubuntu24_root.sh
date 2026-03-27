@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Zion Delivery installer for Ubuntu 24.04 LTS
-# - Installs MySQL 8 and applies concurrency tuning
-# - Installs Python 3.10.11 via pyenv
-# - Installs backend/frontend Python dependencies
-# - Configures systemd services
-# - Configures Nginx reverse proxy
-# - Optionally enables HTTPS via certbot
+# Zion Delivery full installer for Ubuntu 24.04 LTS
+# - MySQL 8 with concurrency tuning
+# - Python 3.10.11 via pyenv
+# - Backend (FastAPI) + Frontend (Flet) services
+# - Nginx reverse proxy + HTTPS via certbot
+# - Runtime logs in /tmp/zion_logs
+# - Optional DB restore from baseZD2703.sql
 
 ############################
-# User-configurable options
+# Defaults (can be overridden via env)
 ############################
 DOMAIN_API="${DOMAIN_API:-ziondelivery.app.br}"
 DOMAIN_APP="${DOMAIN_APP:-loja.ziondelivery.app.br}"
+CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
+ENABLE_HTTPS="${ENABLE_HTTPS:-1}"
+
 SERVER_USER="${SERVER_USER:-zion}"
 SERVER_GROUP="${SERVER_GROUP:-zion}"
 BASE_DIR="${BASE_DIR:-/opt/zion}"
@@ -21,20 +24,24 @@ PROJECT_DIR="${PROJECT_DIR:-/opt/zion/Zion_Delivery_Cliente}"
 GIT_REPO_URL="${GIT_REPO_URL:-}"
 GIT_BRANCH="${GIT_BRANCH:-}"
 
-DB_HOST="${DB_HOST:-127.0.0.1}"
+DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-3306}"
 DB_NAME="${DB_NAME:-zion}"
-DB_APP_USER="${DB_APP_USER:-zion_app}"
-DB_APP_PASSWORD="${DB_APP_PASSWORD:-}"
+DB_USERNAME="${DB_USERNAME:-root}"
+DB_PASSWORD="${DB_PASSWORD:-56Runna01}"
+
+# Backup SQL expected after project checkout
+DB_RESTORE_FILE="${DB_RESTORE_FILE:-${PROJECT_DIR}/backend/migrations/baseZD2703.sql}"
 
 API_HOST="${API_HOST:-127.0.0.1}"
 API_PORT="${API_PORT:-8000}"
 FLET_PORT="${FLET_PORT:-8080}"
 
-ENABLE_HTTPS="${ENABLE_HTTPS:-1}"
-CERTBOT_EMAIL="${CERTBOT_EMAIL:-}"
+LOG_DIR="${LOG_DIR:-/tmp/zion_logs}"
+BACKEND_LOG_FILE="${BACKEND_LOG_FILE:-${LOG_DIR}/backend.log}"
+FRONTEND_LOG_FILE="${FRONTEND_LOG_FILE:-${LOG_DIR}/frontend.log}"
 
-# MySQL tuning defaults (good starting point for 8 GB RAM)
+# MySQL tuning defaults for moderate concurrency (8 GB RAM baseline)
 MYSQL_MAX_CONNECTIONS="${MYSQL_MAX_CONNECTIONS:-300}"
 MYSQL_INNODB_BUFFER_POOL_SIZE="${MYSQL_INNODB_BUFFER_POOL_SIZE:-4G}"
 MYSQL_INNODB_BUFFER_POOL_INSTANCES="${MYSQL_INNODB_BUFFER_POOL_INSTANCES:-4}"
@@ -43,9 +50,6 @@ MYSQL_THREAD_CACHE_SIZE="${MYSQL_THREAD_CACHE_SIZE:-100}"
 MYSQL_TABLE_OPEN_CACHE="${MYSQL_TABLE_OPEN_CACHE:-4000}"
 MYSQL_TABLE_DEFINITION_CACHE="${MYSQL_TABLE_DEFINITION_CACHE:-2000}"
 
-############################
-# Helpers
-############################
 log() {
   echo "[INFO] $*"
 }
@@ -61,20 +65,19 @@ die() {
 
 require_root() {
   if [[ "${EUID}" -ne 0 ]]; then
-    die "Run this script as root: sudo bash deploy/install_zion_ubuntu24.sh"
+    die "Run as root: sudo bash deploy/install_zion_ubuntu24_root.sh"
   fi
 }
 
 require_vars() {
   [[ -n "${GIT_REPO_URL}" ]] || die "GIT_REPO_URL is required."
-  [[ -n "${DB_APP_PASSWORD}" ]] || die "DB_APP_PASSWORD is required."
   if [[ "${ENABLE_HTTPS}" == "1" ]]; then
     [[ -n "${CERTBOT_EMAIL}" ]] || die "CERTBOT_EMAIL is required when ENABLE_HTTPS=1."
   fi
 }
 
 apt_install_base() {
-  log "Updating apt and installing base packages"
+  log "Installing base packages"
   apt update
   DEBIAN_FRONTEND=noninteractive apt -y upgrade
   DEBIAN_FRONTEND=noninteractive apt -y install \
@@ -83,31 +86,34 @@ apt_install_base() {
 }
 
 configure_firewall() {
-  log "Configuring UFW"
+  log "Configuring firewall"
   ufw allow OpenSSH || true
   ufw allow "Nginx Full" || true
   ufw --force enable || true
 }
 
 install_mysql() {
-  log "Installing MySQL server"
+  log "Installing MySQL"
   DEBIAN_FRONTEND=noninteractive apt -y install mysql-server
   systemctl enable mysql
   systemctl start mysql
 }
 
-configure_mysql_schema_and_user() {
-  log "Creating MySQL database and application user"
+configure_mysql_root_and_schema() {
+  log "Configuring root credentials and database"
+
+  # Ensure root works both for localhost and 127.0.0.1 using password auth.
   mysql <<SQL
+ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_PASSWORD}';
+CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED WITH mysql_native_password BY '${DB_PASSWORD}';
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION;
 CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-CREATE USER IF NOT EXISTS '${DB_APP_USER}'@'127.0.0.1' IDENTIFIED BY '${DB_APP_PASSWORD}';
-GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_APP_USER}'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
 }
 
 configure_mysql_concurrency() {
-  log "Applying MySQL concurrency tuning"
+  log "Applying MySQL tuning"
   local conf_file="/etc/mysql/mysql.conf.d/mysqld.cnf"
   cp "${conf_file}" "${conf_file}.bak.$(date +%Y%m%d%H%M%S)"
 
@@ -151,10 +157,10 @@ create_service_user() {
 }
 
 install_pyenv_python() {
-  log "Installing pyenv for ${SERVER_USER}"
+  log "Installing pyenv"
   su - "${SERVER_USER}" -c 'if [[ ! -d "$HOME/.pyenv" ]]; then curl https://pyenv.run | bash; fi'
 
-  log "Installing Python 3.10.11 via pyenv"
+  log "Installing Python 3.10.11"
   su - "${SERVER_USER}" -c 'export PATH="$HOME/.pyenv/bin:$PATH"; eval "$(pyenv init -)"; pyenv install -s 3.10.11; pyenv global 3.10.11'
 }
 
@@ -178,8 +184,8 @@ checkout_project() {
   fi
 }
 
-setup_virtualenvs_and_requirements() {
-  log "Creating virtual environments and installing Python dependencies"
+setup_virtualenvs_and_dependencies() {
+  log "Creating virtualenvs and installing dependencies"
   su - "${SERVER_USER}" -c '
     export PATH="$HOME/.pyenv/bin:$PATH"
     eval "$(pyenv init -)"
@@ -187,19 +193,19 @@ setup_virtualenvs_and_requirements() {
 
     python -m venv .venv_backend
     source .venv_backend/bin/activate
-    pip install --upgrade pip wheel
+    pip install --upgrade pip wheel setuptools
     pip install -r requirements_backend.txt
     deactivate
 
     python -m venv .venv_frontend
     source .venv_frontend/bin/activate
-    pip install --upgrade pip wheel
+    pip install --upgrade pip wheel setuptools
     pip install -r requirements_frontend.txt
     deactivate
   '
 }
 
-patch_project_configs() {
+patch_backend_and_frontend_config() {
   log "Patching backend and frontend config files"
 
   local backend_cfg="${PROJECT_DIR}/backend/cfg/config.py"
@@ -211,8 +217,8 @@ patch_project_configs() {
   sed -i "s|^\s*DB_HOST\s*=.*|    DB_HOST = \"${DB_HOST}\"|" "${backend_cfg}"
   sed -i "s|^\s*DB_PORT\s*=.*|    DB_PORT = ${DB_PORT}|" "${backend_cfg}"
   sed -i "s|^\s*DB_NAME\s*=.*|    DB_NAME = \"${DB_NAME}\"|" "${backend_cfg}"
-  sed -i "s|^\s*DB_USERNAME\s*=.*|    DB_USERNAME = \"${DB_APP_USER}\"|" "${backend_cfg}"
-  sed -i "s|^\s*DB_PASSWORD\s*=.*|    DB_PASSWORD = \"${DB_APP_PASSWORD}\"|" "${backend_cfg}"
+  sed -i "s|^\s*DB_USERNAME\s*=.*|    DB_USERNAME = \"${DB_USERNAME}\"|" "${backend_cfg}"
+  sed -i "s|^\s*DB_PASSWORD\s*=.*|    DB_PASSWORD = \"${DB_PASSWORD}\"|" "${backend_cfg}"
   sed -i "s|^\s*API_HOST\s*=.*|    API_HOST = \"${API_HOST}\"|" "${backend_cfg}"
   sed -i "s|^\s*API_PORT\s*=.*|    API_PORT = ${API_PORT}|" "${backend_cfg}"
   sed -i "s|^\s*URL_API\s*=.*|    URL_API = \"https://${DOMAIN_API}\"|" "${backend_cfg}"
@@ -220,9 +226,23 @@ patch_project_configs() {
   sed -i "s|^\s*URL_API\s*=.*|    URL_API = \"https://${DOMAIN_API}\"|" "${frontend_cfg}"
 }
 
-run_migrations() {
-  log "Running SQL migration script"
-  mysql "${DB_NAME}" < "${PROJECT_DIR}/backend/migrations/create_tables.sql"
+restore_database() {
+  if [[ -f "${DB_RESTORE_FILE}" ]]; then
+    log "Restoring DB from ${DB_RESTORE_FILE}"
+    mysql -h localhost -u root -p"${DB_PASSWORD}" "${DB_NAME}" < "${DB_RESTORE_FILE}"
+  else
+    warn "Backup file not found: ${DB_RESTORE_FILE}"
+    warn "To restore later, copy baseZD2703.sql and import manually."
+  fi
+}
+
+prepare_runtime_logs() {
+  log "Preparing runtime log files in ${LOG_DIR}"
+  mkdir -p "${LOG_DIR}"
+  touch "${BACKEND_LOG_FILE}" "${FRONTEND_LOG_FILE}"
+  chown -R "${SERVER_USER}:${SERVER_GROUP}" "${LOG_DIR}"
+  chmod 775 "${LOG_DIR}"
+  chmod 664 "${BACKEND_LOG_FILE}" "${FRONTEND_LOG_FILE}"
 }
 
 create_systemd_services() {
@@ -242,6 +262,8 @@ ExecStart=${PROJECT_DIR}/.venv_backend/bin/python run_backend.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+StandardOutput=append:${BACKEND_LOG_FILE}
+StandardError=append:${BACKEND_LOG_FILE}
 
 [Install]
 WantedBy=multi-user.target
@@ -261,6 +283,8 @@ ExecStart=${PROJECT_DIR}/.venv_frontend/bin/python app.py
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+StandardOutput=append:${FRONTEND_LOG_FILE}
+StandardError=append:${FRONTEND_LOG_FILE}
 
 [Install]
 WantedBy=multi-user.target
@@ -272,7 +296,7 @@ EOF
 }
 
 configure_nginx() {
-  log "Configuring Nginx reverse proxy"
+  log "Configuring Nginx"
 
   cat > /etc/nginx/sites-available/${DOMAIN_API} <<EOF
 server {
@@ -319,13 +343,13 @@ EOF
   systemctl restart nginx
 }
 
-enable_https_certbot() {
+enable_https() {
   if [[ "${ENABLE_HTTPS}" != "1" ]]; then
     warn "ENABLE_HTTPS=0, skipping certbot"
     return
   fi
 
-  log "Installing certbot and issuing certificate"
+  log "Installing certbot and issuing certificates"
   DEBIAN_FRONTEND=noninteractive apt -y install certbot python3-certbot-nginx
 
   certbot --nginx \
@@ -339,10 +363,10 @@ enable_https_certbot() {
   certbot renew --dry-run
 }
 
-print_validation() {
+print_summary() {
   cat <<EOF
 
-Installation completed.
+Installation complete.
 
 Validation commands:
   systemctl status zion-backend --no-pager
@@ -353,7 +377,9 @@ Validation commands:
   curl -I https://${DOMAIN_API}/health
   curl -I https://${DOMAIN_APP}/
 
-Useful logs:
+Runtime logs (exceptions/errors):
+  tail -f ${BACKEND_LOG_FILE}
+  tail -f ${FRONTEND_LOG_FILE}
   journalctl -u zion-backend -f
   journalctl -u zion-frontend -f
   tail -f /var/log/nginx/error.log
@@ -367,19 +393,20 @@ main() {
   apt_install_base
   configure_firewall
   install_mysql
-  configure_mysql_schema_and_user
+  configure_mysql_root_and_schema
   configure_mysql_concurrency
   install_python_build_deps
   create_service_user
   install_pyenv_python
   checkout_project
-  setup_virtualenvs_and_requirements
-  patch_project_configs
-  run_migrations
+  setup_virtualenvs_and_dependencies
+  patch_backend_and_frontend_config
+  restore_database
+  prepare_runtime_logs
   create_systemd_services
   configure_nginx
-  enable_https_certbot
-  print_validation
+  enable_https
+  print_summary
 }
 
 main "$@"

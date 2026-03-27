@@ -100,6 +100,25 @@ Expected:
 journalctl -u zion-backend -f
 journalctl -u zion-frontend -f
 tail -f /var/log/nginx/error.log
+tail -f /opt/zion/Zion_Delivery_Cliente/frontend/log/frontend.log
+```
+
+Frontend exceptions are now persisted in:
+
+```bash
+/opt/zion/Zion_Delivery_Cliente/frontend/log/frontend.log
+```
+
+Useful quick checks when the app shows "Sem conexao":
+
+```bash
+# Check frontend service status and recent errors
+systemctl status zion-frontend --no-pager
+journalctl -u zion-frontend -n 200 --no-pager
+
+# Test connectivity from frontend host to backend
+curl -v https://ziondelivery.app.br/health
+curl -v http://127.0.0.1:8000/health
 ```
 
 ## 7. Important production notes

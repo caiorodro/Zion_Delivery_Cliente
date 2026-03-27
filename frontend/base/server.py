@@ -1,12 +1,15 @@
 import json
+import logging
 import os
 import time
-from datetime import datetime
 from typing import List, Optional
 
 import requests
 
 from frontend.cfg.config import AppConfig
+
+
+logger = logging.getLogger(__name__)
 
 
 class ZionAPI:
@@ -16,9 +19,6 @@ class ZionAPI:
         self.base_url = AppConfig.URL_API
         self.timeout = 15
 
-    def _log(self, msg: str):
-        print(f"[{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] {msg}")
-
     def _get(self, path: str, params: dict = None, retries: int = 3) -> Optional[dict]:
         url = f"{self.base_url}{path}"
         for attempt in range(1, retries + 1):
@@ -27,15 +27,23 @@ class ZionAPI:
                 resp.raise_for_status()
                 return resp.json()
             except requests.exceptions.ConnectionError:
-                self._log(f"GET {url} – tentativa {attempt}/{retries} falhou (conexão)")
+                logger.warning("GET %s - tentativa %s/%s falhou (conexao)", url, attempt, retries)
                 if attempt < retries:
                     time.sleep(2)
             except requests.exceptions.Timeout:
-                self._log(f"GET {url} – timeout na tentativa {attempt}/{retries}")
+                logger.warning("GET %s - timeout na tentativa %s/%s", url, attempt, retries)
                 if attempt < retries:
                     time.sleep(2)
             except requests.exceptions.HTTPError as e:
-                self._log(f"GET {url} – erro HTTP {e.response.status_code}")
+                logger.error(
+                    "GET %s - erro HTTP %s - body: %s",
+                    url,
+                    e.response.status_code,
+                    (e.response.text or "")[:500],
+                )
+                raise
+            except Exception:
+                logger.exception("GET %s - erro inesperado", url)
                 raise
         return None
 
@@ -47,15 +55,23 @@ class ZionAPI:
                 resp.raise_for_status()
                 return resp.json()
             except requests.exceptions.ConnectionError:
-                self._log(f"POST {url} – tentativa {attempt}/{retries} falhou (conexão)")
+                logger.warning("POST %s - tentativa %s/%s falhou (conexao)", url, attempt, retries)
                 if attempt < retries:
                     time.sleep(2)
             except requests.exceptions.Timeout:
-                self._log(f"POST {url} – timeout na tentativa {attempt}/{retries}")
+                logger.warning("POST %s - timeout na tentativa %s/%s", url, attempt, retries)
                 if attempt < retries:
                     time.sleep(2)
             except requests.exceptions.HTTPError as e:
-                self._log(f"POST {url} – erro HTTP {e.response.status_code}")
+                logger.error(
+                    "POST %s - erro HTTP %s - body: %s",
+                    url,
+                    e.response.status_code,
+                    (e.response.text or "")[:500],
+                )
+                raise
+            except Exception:
+                logger.exception("POST %s - erro inesperado", url)
                 raise
         return None
 

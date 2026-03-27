@@ -9,6 +9,13 @@ class Config(object):
     DB_USERNAME = "root"
     DB_PASSWORD = "56Runna01"
 
+    DB_CONNECTION_URL = (
+        f"mysql://{DB_USERNAME}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    )
+    DB_CONNECTION_URL_SAFE = (
+        f"mysql://{DB_USERNAME}:***@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    )
+
     API_HOST = "0.0.0.0"
     API_PORT = 8000
 

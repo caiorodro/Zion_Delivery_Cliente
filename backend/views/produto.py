@@ -40,6 +40,7 @@ class ProdutoView:
             FOTO_PRODUTO=''
         ).__dict__
 
+
     def _default_value_by_type(self, data_type: str):
         numeric_types = {
             "tinyint", "smallint", "mediumint", "int", "bigint",
@@ -55,9 +56,11 @@ class ProdutoView:
 
     async def get_all_produtos(self) -> List[dict]:
         """Retorna todos os produtos ativos com preço delivery > 0."""
-        conn = get_connection()
+        
+        conn = None
 
         try:
+            conn = get_connection()
             cursor = conn.cursor()
             preco_column = self._get_preco_column(cursor)
 
@@ -80,7 +83,6 @@ class ProdutoView:
                     p.ID_PRODUTO,
                     p.DESCRICAO_PRODUTO,
                     p.{preco_column},
-                    p.ID_FAMILIA,
                     p.PRODUTO_ATIVO,
                     p.FOTO_PRODUTO
                 FROM tb_produto p
@@ -100,12 +102,24 @@ class ProdutoView:
             cursor.close()
 
             result = []
+
             for row in rows:
                 result.append(self._build_produto_dict(row))
 
             return result
+        
+        except Exception as ex:
+            
+            with open('/tmp/errorLog.txt', "a", encoding="utf-8") as log_file:
+                log_file.write(f"Erro ao obter produtos: {str(ex)}\n")
+
+            raise
+
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except:
+                pass
 
     def update_produto(self, id_produto: int, body: dict) -> dict:
         """Atualiza um produto da tb_produto pelo ID_PRODUTO."""
