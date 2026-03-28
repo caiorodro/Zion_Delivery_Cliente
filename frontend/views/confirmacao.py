@@ -70,21 +70,22 @@ class Confirmacao:
         self._ring_status = self.col_status.controls[2]
         self.lbl_status = zLabel("", size=15, bold=True)
 
-        self.btn_voltar = zButton(
-            text="← Voltar",
+        self.btn_voltar = ft.IconButton(
+            icon=ft.icons.ARROW_BACK,
+            icon_size=28,
+            icon_color="#ffffff",
+            bgcolor=AppConfig.BTN_PRIMARY,
             on_click=lambda e: self.page.go("/pagamento"),
-            width=140
         )
         self.btn_confirmar = zButton(
-            text="✔  Confirmar Pedido",
+            text="Confirmar Pedido",
             on_click=self._confirmar_pedido,
-            width=220,
-            icon=ft.icons.CHECK_CIRCLE_OUTLINE
+            width=220
         )
         self.btn_inicio = zButton(
-            text="🏠  Voltar para o início",
+            text="Voltar para o inicio",
             on_click=lambda e: self.page.go("/cardapio"),
-            width=220,
+            width=240,
             visible=False,
         )
 
@@ -137,7 +138,9 @@ class Confirmacao:
 
                                 ft.Row(
                                     [self.btn_voltar, self.btn_confirmar],
-                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                                    wrap=True,
+                                    spacing=10,
+                                    alignment=ft.MainAxisAlignment.CENTER
                                 ),
                                 ft.Row(
                                     [self.btn_inicio],

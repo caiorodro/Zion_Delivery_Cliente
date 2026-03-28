@@ -40,7 +40,7 @@ class Endereco:
     def _init_controls(self):
         self.txt_rua = zTextField(
             label="Rua / Logradouro *",
-            width=320,
+            width=360,
             hint_text="Digite o nome da rua"
         )
         self.txt_numero = zTextField(label="Número *", width=100)
@@ -55,7 +55,7 @@ class Endereco:
         self.txt_bairro = zTextField(label="Bairro *", width=220)
         self.txt_obs = zTextField(
             label="Observações para o entregador",
-            width=450,
+            width=470,
             hint_text="Ponto de referência, portão, etc."
         )
 
@@ -78,7 +78,7 @@ class Endereco:
 
         self.txt_pesq_rua = zTextField(
             label="Pesquisar rua / bairro / CEP",
-            width=300,
+            width=470,
             hint_text="Mínimo 2 caracteres",
             on_change=self._on_pesq_rua_change
         )
@@ -115,10 +115,12 @@ class Endereco:
                     expand=True,
                     alignment=ft.alignment.top_center,
                     content=ft.Container(
-                        width=1024,
-                        padding=ft.padding.symmetric(horizontal=20, vertical=16),
+                        width=760,
+                        padding=ft.padding.symmetric(horizontal=18, vertical=14),
                         content=ft.Column(
+                            scroll=ft.ScrollMode.AUTO,
                             spacing=16,
+                            horizontal_alignment=ft.CrossAxisAlignment.START,
                             controls=[
                                 ft.Row(
                                     [zTitle("🏠  Endereço de Entrega"),
@@ -129,24 +131,24 @@ class Endereco:
 
                                 # UF, filtro de cidade e combo cidade
                                 zLabel("Selecione o estado e cidade para localizar o endereço:"),
-                                ft.Row([self.cb_uf, self.txt_pesq_cidade, self.cb_cidade], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.CENTER),
+                                ft.Row([self.cb_uf, self.txt_pesq_cidade, self.cb_cidade], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
 
                                 # Pesquisa de rua
                                 zLabel("Pesquisar endereço:"),
-                                ft.Row([self.txt_pesq_rua], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
+                                ft.Row([self.txt_pesq_rua], wrap=True, alignment=ft.MainAxisAlignment.START),
                                 self.lst_enderecos,
 
                                 zDivider(),
                                 zLabel("Preencha os dados abaixo:"),
 
                                 # Rua + número
-                                ft.Row([self.txt_rua, self.txt_numero], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.CENTER),
+                                ft.Row([self.txt_rua, self.txt_numero], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
                                 # Complemento + CEP
-                                ft.Row([self.txt_complemento, self.txt_cep], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.CENTER),
+                                ft.Row([self.txt_complemento, self.txt_cep], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
                                 # Bairro
-                                ft.Row([self.txt_bairro], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
+                                ft.Row([self.txt_bairro], wrap=True, alignment=ft.MainAxisAlignment.START),
                                 # Observações
-                                ft.Row([self.txt_obs], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
+                                ft.Row([self.txt_obs], wrap=True, alignment=ft.MainAxisAlignment.START),
 
                                 ft.Row(
                                     [self.btn_proximo],

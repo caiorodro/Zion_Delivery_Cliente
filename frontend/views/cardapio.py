@@ -31,7 +31,7 @@ class Cardapio:
     def _init_controls(self):
         self.txt_pesq = zTextField(
             label="Pesquisar produto...",
-            width=220,
+            width=260,
             autofocus=True,
             on_submit=lambda e: self._carregar_cardapio()
         )
@@ -45,7 +45,7 @@ class Cardapio:
         self.cb_familia = zDropdown(
             label="Família",
             options=opcoes,
-            width=200,
+            width=260,
             on_change=lambda e: self._carregar_cardapio()
         )
         self.cb_familia.value = 0
@@ -97,11 +97,12 @@ class Cardapio:
                     expand=True,
                     alignment=ft.alignment.top_center,
                     content=ft.Container(
-                        width=1024,
+                        width=760,
                         padding=ft.padding.symmetric(horizontal=16, vertical=12),
                         content=ft.Column(
                             expand=True,
                             spacing=10,
+                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
                                 ft.Row(
                                     [
@@ -176,14 +177,7 @@ class Cardapio:
             return
 
         bloco = self._produtos_filtrados[inicio:fim]
-        pares = []
-        for i in range(0, len(bloco), 2):
-            try:
-                pares.append((bloco[i], bloco[i + 1]))
-            except IndexError:
-                pares.append((bloco[i], None))
-
-        self.col_cardapio.controls.extend([self._get_row_card(par) for par in pares])
+        self.col_cardapio.controls.extend([self._get_row_card(produto) for produto in bloco])
         self._indice_carregado = fim
 
         try:
@@ -219,12 +213,11 @@ class Cardapio:
         if limite > 0 and posicao >= (limite - 180):
             self._carregar_proxima_pagina()
 
-    def _get_row_card(self, par: tuple) -> ft.Row:
-        cards = []
-        for produto in par:
-            if produto is not None:
-                cards.append(self._get_card(produto))
-        return ft.Row(controls=cards, wrap=True, spacing=8)
+    def _get_row_card(self, produto) -> ft.Row:
+        return ft.Row(
+            controls=[self._get_card(produto)],
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
 
     def _extrair_base64_foto(self, foto_produto: str) -> str:
         if not foto_produto:
@@ -244,15 +237,15 @@ class Cardapio:
 
         if foto_base64:
             return ft.Container(
-                width=168,
-                height=110,
+                width=288,
+                height=182,
                 border_radius=8,
                 clip_behavior=ft.ClipBehavior.HARD_EDGE,
                 content=ft.Image(
                     src_base64=foto_base64,
                     fit=ft.ImageFit.COVER,
-                    width=168,
-                    height=110,
+                    width=288,
+                    height=182,
                     error_content=ft.Container(
                         alignment=ft.alignment.center,
                         bgcolor="#f5f5f5",
@@ -262,8 +255,8 @@ class Cardapio:
             )
 
         return ft.Container(
-            width=168,
-            height=110,
+            width=288,
+            height=182,
             border_radius=8,
             bgcolor="#f5f5f5",
             alignment=ft.alignment.center,
@@ -277,7 +270,8 @@ class Cardapio:
 
         txt_qtde = ft.TextField(
             value=str(qtde_atual),
-            width=60,
+            width=78,
+            height=42,
             text_align=ft.TextAlign.CENTER,
             keyboard_type=ft.KeyboardType.NUMBER,
             color="#333333",
@@ -289,12 +283,14 @@ class Cardapio:
         btn_minus = ft.IconButton(
             icon=ft.icons.REMOVE_CIRCLE_OUTLINE,
             icon_color=AppConfig.BTN_PRIMARY,
+            icon_size=34,
             tooltip="Diminuir",
             on_click=lambda e, p=produto, t=txt_qtde: self._subtrair(p, t)
         )
         btn_plus = ft.IconButton(
             icon=ft.icons.ADD_CIRCLE_OUTLINE,
             icon_color=AppConfig.BTN_PRIMARY,
+            icon_size=34,
             tooltip="Adicionar",
             on_click=lambda e, p=produto, t=txt_qtde: self._adicionar(p, t)
         )
@@ -307,23 +303,23 @@ class Cardapio:
             controls=[
                 self._get_foto_control(produto),
                 ft.Container(
-                    width=168,
-                    height=50,
+                    width=288,
+                    height=52,
                     content=ft.Text(
                         produto.DESCRICAO_PRODUTO,
-                        size=13,
+                        size=15,
                         color=AppConfig.FONT_COLOR,
                         weight=ft.FontWeight.BOLD,
                         max_lines=2,
                         overflow=ft.TextOverflow.ELLIPSIS,
-                        width=168,
+                        width=288,
                     ),
                 ),
-                ft.Text(preco_fmt, size=14, color=AppConfig.FONT_COLOR),
+                ft.Text(preco_fmt, size=18, color=AppConfig.FONT_COLOR, weight=ft.FontWeight.BOLD),
                 ft.Row(
                     [btn_minus, txt_qtde, btn_plus],
                     alignment=ft.MainAxisAlignment.CENTER,
-                    spacing=2,
+                    spacing=4,
                 ),
             ],
         )
@@ -332,9 +328,9 @@ class Cardapio:
             content=card_content,
             bgcolor="#ffffff",
             border_radius=10,
-            padding=10,
-            width=190,
-            height=245,
+            padding=12,
+            width=320,
+            height=336,
             shadow=ft.BoxShadow(spread_radius=1, blur_radius=4, color=ft.colors.GREY_300),
         )
 

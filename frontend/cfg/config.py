@@ -3,7 +3,7 @@ class AppConfig:
     URL_API = "http://localhost:8000"
 
     # Cores do tema
-    BG_COLOR = "#a7b1b6"
+    BG_COLOR = "#c6d0d4"
     FONT_COLOR = "#874531"
     BTN_PRIMARY = "#874531"
     BTN_TEXT = "#ffffff"

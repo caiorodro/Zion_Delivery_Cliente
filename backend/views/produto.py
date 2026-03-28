@@ -32,12 +32,20 @@ class ProdutoView:
         return row[0] if row else "PRECO_BALCAO"
 
     def _build_produto_dict(self, row) -> dict:
+        foto_produto = ""
+        foto_raw = row[4] if len(row) > 4 else None
+
+        if isinstance(foto_raw, (bytes, bytearray)) and foto_raw:
+            foto_produto = base64.b64encode(foto_raw).decode("utf-8")
+        elif isinstance(foto_raw, str) and foto_raw.strip():
+            foto_produto = foto_raw.strip()
+
         return Produto(
             ID_PRODUTO=row[0],
             DESCRICAO_PRODUTO=row[1],
             PRECO_DELIVERY=float(row[2]) if isinstance(row[2], Decimal) else (row[2] or 0.0),
             PRODUTO_ATIVO=row[3],
-            FOTO_PRODUTO=''
+            FOTO_PRODUTO=foto_produto
         ).__dict__
 
 

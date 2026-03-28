@@ -61,22 +61,20 @@ import requests
 
 # print(result.status_code, result.text)
 
-#urlDelivery = "https://ziondelivery.app.br/"
-
-# urlDelivery = "http://localhost:8000/"
-
-# result = requests.get(
-#     url=f"{urlDelivery}pedidos/pendentes",
-#     json={}
-# )
-
-# print(result.status_code, result.text)
-
 urlDelivery = "https://ziondelivery.app.br/"
 
 result = requests.get(
-    url=f"{urlDelivery}produtos",
+    url=f"{urlDelivery}pedidos/pendentes",
     json={}
 )
 
 print(result.status_code, result.text)
+
+# urlDelivery = "https://ziondelivery.app.br/"
+
+# result = requests.get(
+#     url=f"{urlDelivery}produtos",
+#     json={}
+# )
+
+# print(result.status_code, result.text)

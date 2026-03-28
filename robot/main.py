@@ -25,15 +25,14 @@ from config import (
 from models.pedido_zion import pedido_zion_from_dict
 from mapper import mapear_pedido
 
-# ── Logging ───────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%d/%m/%Y %H:%M:%S",
 )
+
 log = logging.getLogger(__name__)
 
-# Pedidos já processados nesta sessão (evita reprocessamento enquanto o robô roda)
 _processados: set[int] = set()
 
 def buscar_pedidos_pendentes() -> list[dict]:
@@ -65,24 +64,19 @@ def processar_pedido(pedido_dict: dict) -> None:
 
     log.info(f"Processando pedido #{numero}...")
 
-    # 1. Deserializar
     pedido_zion = pedido_zion_from_dict(pedido_dict)
 
-    # 2. Mapear para o formato PDV
     request_pdv = mapear_pedido(pedido_zion)
     payload = request_pdv.to_dict()
 
     log.debug("Payload PDV:\n%s", json.dumps(payload, indent=2, ensure_ascii=False))
 
-    # 3. Enviar ao PDV
     resposta_pdv = enviar_para_pdv(payload)
     log.info(f"Pedido #{numero} enviado ao PDV. Resposta: {resposta_pdv}")
 
-    # 4. Aceitar no Zion
     aceitar_pedido_zion(numero)
     log.info(f"Pedido #{numero} aceito no Zion Delivery.")
 
-    # 5. Marcar como processado
     _processados.add(numero)
 
 
