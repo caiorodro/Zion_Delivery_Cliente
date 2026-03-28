@@ -120,6 +120,11 @@ class ZionAPI:
     def get_status_pedido(self, numero_pedido: int) -> Optional[dict]:
         return self._get(f"/pedidos/{numero_pedido}/status")
 
+    # ─── Empresa ───────────────────────────────────────────────
+
+    def get_dados_empresa_splash(self) -> Optional[dict]:
+        return self._get("/empresa/splash")
+
     # ─── Health ─────────────────────────────────────────────────
 
     def health_check(self) -> bool:

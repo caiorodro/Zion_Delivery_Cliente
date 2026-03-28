@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class CacheManager:
-    """Gerencia o cache local de produtos, famílias e grades."""
+    """Gerencia cache local em JSON e mantém os dados em memória."""
 
     _produtos: List[ListaProduto] = []
     _familias: List[FamiliaProduto] = []
@@ -40,7 +40,7 @@ class CacheManager:
 
     @classmethod
     def download_e_salvar(cls) -> bool:
-        """Faz download da API e salva localmente. Retorna True se bem-sucedido."""
+        """Baixa dados da API e salva em JSON local, além de atualizar memória."""
         api = ZionAPI()
         try:
             produtos = api.download_produtos()
@@ -60,15 +60,12 @@ class CacheManager:
             cls._loaded = True
             return True
         except Exception as ex:
-            with open(AppConfig.LOG_FILE, "a", encoding="utf-8") as log_file:
-                log_file.write(f"Erro ao baixar dados da API: {str(ex)}\n")
-
-            logger.exception("Erro ao baixar dados da API")
+            logger.exception("Erro ao carregar dados da API para o cardapio")
             return False
 
     @classmethod
     def carregar_cache_local(cls) -> bool:
-        """Carrega dados do cache local (arquivo JSON)."""
+        """Carrega dados dos JSON locais para memória."""
         try:
             produtos = cls._load_json(AppConfig.CACHE_PRODUTOS)
             familias = cls._load_json(AppConfig.CACHE_FAMILIAS)
@@ -82,12 +79,14 @@ class CacheManager:
             cls._grades = [GradeProduto(**g) for g in grades]
             cls._loaded = True
             return True
-        except Exception as ex:
-            with open(AppConfig.LOG_FILE, "a", encoding="utf-8") as log_file:
-                log_file.write(f"Erro ao carregar cache local: {str(ex)}\n")
-
-            logger.exception("Erro ao carregar cache local")
+        except Exception:
+            logger.exception("Erro ao carregar cache local do cardapio")
             return False
+
+    @classmethod
+    def carregar_dados_api(cls) -> bool:
+        """Compatibilidade: mantém nome antigo apontando para download + persistência local."""
+        return cls.download_e_salvar()
 
     @classmethod
     def get_produtos(cls) -> List[ListaProduto]:

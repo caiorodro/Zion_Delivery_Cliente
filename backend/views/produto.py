@@ -3,6 +3,7 @@ from typing import List
 from decimal import Decimal
 
 from base.database import get_connection
+from base.error_logger import append_exception_log
 from base.qBase import qBase
 from models.produto import Produto, ProdutoCreate
 from models.familia_produto import FamiliaProduto
@@ -33,7 +34,7 @@ class ProdutoView:
 
     def _build_produto_dict(self, row) -> dict:
         foto_produto = ""
-        foto_raw = row[4] if len(row) > 4 else None
+        foto_raw = row[5] if len(row) > 5 else None
 
         if isinstance(foto_raw, (bytes, bytearray)) and foto_raw:
             foto_produto = base64.b64encode(foto_raw).decode("utf-8")
@@ -42,12 +43,11 @@ class ProdutoView:
 
         return Produto(
             ID_PRODUTO=row[0],
-            DESCRICAO_PRODUTO=row[1],
-            PRECO_DELIVERY=float(row[2]) if isinstance(row[2], Decimal) else (row[2] or 0.0),
-            PRODUTO_ATIVO=row[3],
+            DESCRICAO_PRODUTO=row[2],
+            PRECO_DELIVERY=float(row[3]) if isinstance(row[3], Decimal) else (row[3] or 0.0),
+            PRODUTO_ATIVO=row[4],
             FOTO_PRODUTO=foto_produto
         ).__dict__
-
 
     def _default_value_by_type(self, data_type: str):
         numeric_types = {
@@ -89,6 +89,7 @@ class ProdutoView:
             sql = """
                 SELECT
                     p.ID_PRODUTO,
+                    p.ID_FAMILIA,
                     p.DESCRICAO_PRODUTO,
                     p.{preco_column},
                     p.PRODUTO_ATIVO,
@@ -117,10 +118,7 @@ class ProdutoView:
             return result
         
         except Exception as ex:
-            
-            with open('/tmp/errorLog.txt', "a", encoding="utf-8") as log_file:
-                log_file.write(f"Erro ao obter produtos: {str(ex)}\n")
-
+            append_exception_log("produto.get_all_produtos", ex)
             raise
 
         finally:
@@ -222,7 +220,8 @@ class ProdutoView:
             cursor.close()
 
             return self._build_produto_dict(row) if row else {}
-        except Exception:
+        except Exception as ex:
+            append_exception_log("produto.update_produto", ex)
             conn.rollback()
             raise
         finally:
@@ -303,7 +302,8 @@ class ProdutoView:
                 "ID_EMPRESA": required_values["ID_EMPRESA"],
                 "PRODUTO_ATIVO": required_values["PRODUTO_ATIVO"],
             }
-        except Exception:
+        except Exception as ex:
+            append_exception_log("produto.create_produto", ex)
             conn.rollback()
             raise
         finally:

@@ -4,8 +4,8 @@ Ajuste as variáveis abaixo conforme o ambiente.
 """
 
 # ── API Zion Delivery (fonte dos pedidos pendentes) ──────────────────────────
-URL_ZION = "https://ziondelivery.app.br/"
-#URL_ZION = "http://127.0.0.1:8000/"
+#URL_ZION = "https://ziondelivery.app.br/"
+URL_ZION = "http://127.0.0.1:8000/"
 
 # ── API PDV Zion (destino - sistema interno) ─────────────────────────────────
 # TODO: preencha com a URL correta do PDV

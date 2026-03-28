@@ -1,14 +1,17 @@
-from fastapi import FastAPI, HTTPException, status, Header
+from fastapi import FastAPI, HTTPException, status, Header, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, List
 import json
 
 from cfg.config import Config
 from base.authentication import Authentication
+from base.error_logger import append_exception_log
 from views.produto import ProdutoView
 from views.endereco import EnderecoView
 from views.frete import FreteView
 from views.pedido import PedidoView
+from views.empresa import EmpresaView
 from models.produto import ProdutoCreate
 from models.pedido import (
     Pedido, DadosCliente, EnderecoEntrega, ItemPedido, PagamentoPedido
@@ -27,6 +30,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    append_exception_log(f"Unhandled exception: {request.method} {request.url.path}", exc)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Erro interno do servidor"},
+    )
 
 
 # ─────────────────────────────────────────────
@@ -76,6 +88,7 @@ def criar_produto(body: dict):
             detail=str(ve)
         )
     except Exception as ex:
+        append_exception_log("main.criar_produto", ex)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(ex)
@@ -100,6 +113,7 @@ async def atualizar_produto(id_produto: int, body: dict):
             detail=str(ex)
         )
     except Exception as ex:
+        append_exception_log("main.atualizar_produto", ex)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(ex)
@@ -138,6 +152,7 @@ async def atualizar_produto_ativo(id_produto: int, body: dict):
             detail=str(ex)
         )
     except Exception as ex:
+        append_exception_log("main.atualizar_produto_ativo", ex)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(ex)
@@ -162,6 +177,12 @@ async def listar_familias():
 async def listar_grades():
     view = ProdutoView()
     return await view.get_all_grades()
+
+
+@app.get("/empresa/splash", tags=["Empresa"])
+async def dados_empresa_splash():
+    view = EmpresaView()
+    return view.get_dados_splash()
 
 
 # ─────────────────────────────────────────────
@@ -273,6 +294,7 @@ def criar_pedido(body: dict):
             detail=f"Campo obrigatório ausente: {ke}"
         )
     except Exception as ex:
+        append_exception_log("main.criar_pedido", ex)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(ex)
@@ -292,6 +314,7 @@ def criar_pedido_robo(body: dict):
             detail=str(ve)
         )
     except Exception as ex:
+        append_exception_log("main.criar_pedido_robo", ex)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(ex)

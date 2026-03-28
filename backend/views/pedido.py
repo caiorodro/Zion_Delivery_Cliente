@@ -1,9 +1,8 @@
 import datetime
 from typing import Optional
 
-import traceback
-
 from base.database import get_connection
+from base.error_logger import append_exception_log
 from base.qBase import qBase
 from models.pedido import Pedido, StatusPedido
 
@@ -574,8 +573,7 @@ class PedidoView:
                 "PAGAMENTOS_INSERIDOS": len(pagamento_data),
             }
         except Exception as ex:
-            print(ex.args)
-            print(traceback.format_exc())
+            append_exception_log("pedido.gravar_pedido_robo", ex)
             conn.rollback()
             raise ex
         finally:
@@ -672,6 +670,7 @@ class PedidoView:
             return {"NUMERO_PEDIDO": numero_pedido, "STATUS": 0}
 
         except Exception as ex:
+            append_exception_log("pedido.gravar_pedido", ex)
             conn.rollback()
             raise ex
         finally:
@@ -873,6 +872,7 @@ class PedidoView:
             }
 
         except Exception as ex:
+            append_exception_log("pedido.aceitar_pedido", ex)
             conn.rollback()
             raise ex
         finally:

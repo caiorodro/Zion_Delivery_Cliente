@@ -1,8 +1,10 @@
 import threading
 import logging
+import os
 import flet as ft
 
 from frontend.base.cache import CacheManager
+from frontend.base.server import ZionAPI
 from frontend.base.logging_setup import setup_frontend_logging
 from frontend.cfg.config import AppConfig
 from frontend.models.sacola import Sacola
@@ -42,12 +44,29 @@ def main(page: ft.Page):
     sacola = Sacola()
     sacola.TAXA_ENTREGA = AppConfig.TAXA_ENTREGA
 
+    def _get_logo_src() -> str:
+        candidates = [
+            ("frontend/data/logo.png", "data/logo.png"),
+            ("frontend/data/logo.jpg", "data/logo.jpg"),
+            ("frontend/img/logo.png", "img/logo.png"),
+            ("frontend/img/logo.jpg", "img/logo.jpg"),
+        ]
+
+        for disk_path, asset_path in candidates:
+            if os.path.exists(disk_path):
+                return asset_path
+
+        return ""
+
     # ─── Splash / Loading ───────────────────────────────────────
     progress_ring = ft.ProgressRing(
         width=48, height=48, stroke_width=4,
         color=AppConfig.BTN_PRIMARY,
     )
     lbl_loading = zLabel("Baixando cardápio...", size=14, color=AppConfig.FONT_COLOR)
+    lbl_empresa = zTitle("Zion")
+    logo_src = _get_logo_src()
+
     splash = ft.View(
         route="/splash",
         bgcolor=AppConfig.BG_COLOR,
@@ -59,10 +78,16 @@ def main(page: ft.Page):
                 alignment=ft.MainAxisAlignment.CENTER,
                 controls=[
                     ft.Image(
-                        src="frontend/img/logo.png",
+                        src=logo_src,
                         width=180,
-                        error_content=zTitle("🍺 ZION"),
+                        error_content=ft.Icon(
+                            name=ft.icons.STORE_MALL_DIRECTORY_OUTLINED,
+                            color=AppConfig.FONT_COLOR,
+                            size=72,
+                        ),
                     ),
+                    ft.Container(height=10),
+                    lbl_empresa,
                     ft.Container(height=20),
                     progress_ring,
                     ft.Container(height=10),
@@ -161,7 +186,17 @@ def main(page: ft.Page):
     # ─── Download inicial do cardápio ───────────────────────────
     def _init_data():
         try:
-            # Tenta carregar cache local primeiro
+            try:
+                api = ZionAPI()
+                dados_empresa = api.get_dados_empresa_splash() or {}
+                nome_fantasia = str(dados_empresa.get("NOME_FANTASIA") or "").strip()
+                if nome_fantasia:
+                    lbl_empresa.value = nome_fantasia
+                    lbl_empresa.update()
+            except Exception:
+                logger.exception("Falha ao carregar nome fantasia para splash")
+
+            # Tenta carregar cache local primeiro para reduzir tempo de abertura.
             if CacheManager.carregar_cache_local():
                 logger.info("Cache local carregado com sucesso")
                 lbl_loading.value = "Cache carregado! Atualizando..."
@@ -170,7 +205,6 @@ def main(page: ft.Page):
                 except Exception:
                     logger.exception("Falha ao atualizar label de loading")
 
-            # Baixa da API
             ok = CacheManager.download_e_salvar()
             if not ok and not CacheManager.is_loaded():
                 logger.error("Sem conexao com API e sem cache local disponivel")
@@ -201,5 +235,5 @@ ft.app(
     target=main,
     view=ft.WEB_BROWSER,
     port=8080,
-    assets_dir="frontend/img",
+    assets_dir="frontend",
 )

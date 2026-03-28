@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from cfg.config import Config
+from base.error_logger import append_exception_log
 
 
 class Authentication:
@@ -34,6 +35,7 @@ class Authentication:
             }
             return jwt.encode(payload, Config.SECRET_KEY, algorithm="HS256")
         except Exception:
+            append_exception_log("authentication.encode_token")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Falha na criação do token de autenticação",

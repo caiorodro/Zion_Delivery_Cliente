@@ -1,6 +1,7 @@
 import mysql.connector
 from mysql.connector import pooling
 from cfg.config import Config
+from base.error_logger import append_exception_log
 
 
 _pool = None
@@ -30,6 +31,7 @@ def get_pool():
                 use_pure=True,
             )
         except Exception as ex:
+            append_exception_log("database.get_pool", ex)
             print(f"[DB] Falha ao criar pool MySQL: {get_connection_string(mask_password=True)}")
             raise
     return _pool
