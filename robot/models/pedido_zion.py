@@ -14,6 +14,7 @@ class ItemPedidoZion:
     TOTAL_ITEM: float
     OBS_ITEM: str = ""
     ID_GRADE: Optional[int] = None
+    CODIGO_WABIZ: str = ""
 
 
 @dataclass
@@ -88,6 +89,7 @@ def pedido_zion_from_dict(data: dict) -> PedidoZion:
             TOTAL_ITEM=it["TOTAL_ITEM"],
             OBS_ITEM=it.get("OBS_ITEM", ""),
             ID_GRADE=it.get("ID_GRADE"),
+            CODIGO_WABIZ=it.get("CODIGO_WABIZ", ""),
         )
         for it in data["ITEMS"]
     ]

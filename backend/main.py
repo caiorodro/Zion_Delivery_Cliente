@@ -72,7 +72,8 @@ def criar_produto(body: dict):
             ID_TRIBUTO=body["ID_TRIBUTO"],
             ID_FAMILIA=body["ID_FAMILIA"],
             ID_EMPRESA=body["ID_EMPRESA"],
-            PRODUTO_ATIVO=body["PRODUTO_ATIVO"]
+            PRODUTO_ATIVO=body["PRODUTO_ATIVO"],
+            CODIGO_WABIZ=body["CODIGO_WABIZ"]
         )
 
         view = ProdutoView()
@@ -95,8 +96,8 @@ def criar_produto(body: dict):
         )
 
 
-@app.patch("/produtos/{id_produto}", tags=["Produtos"])
-async def atualizar_produto(id_produto: int, body: dict):
+@app.patch("/produtos/{codigo_wabiz}", tags=["Produtos"])
+async def atualizar_produto(codigo_wabiz: str, body: dict):
     if not body:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -106,7 +107,7 @@ async def atualizar_produto(id_produto: int, body: dict):
     view = ProdutoView()
 
     try:
-        result = view.update_produto(id_produto, body)
+        result = view.update_produto(codigo_wabiz, body)
     except ValueError as ex:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -128,8 +129,8 @@ async def atualizar_produto(id_produto: int, body: dict):
     return result
 
 
-@app.patch("/produtos/{id_produto}/ativo", tags=["Produtos"])
-async def atualizar_produto_ativo(id_produto: int, body: dict):
+@app.patch("/produtos/{codigo_wabiz}/ativo", tags=["Produtos"])
+async def atualizar_produto_ativo(codigo_wabiz: str, body: dict):
     if "PRODUTO_ATIVO" not in body:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -145,7 +146,7 @@ async def atualizar_produto_ativo(id_produto: int, body: dict):
     view = ProdutoView()
 
     try:
-        result = view.update_produto(id_produto, {"PRODUTO_ATIVO": body["PRODUTO_ATIVO"]})
+        result = view.update_produto(codigo_wabiz, {"PRODUTO_ATIVO": body["PRODUTO_ATIVO"]})
     except ValueError as ex:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -258,13 +259,14 @@ def criar_pedido(body: dict):
         )
         items = [
             ItemPedido(
-                ID_PRODUTO=it["ID_PRODUTO"],
+                ID_PRODUTO=it.get("ID_PRODUTO", 0),
                 DESCRICAO_PRODUTO=it["DESCRICAO_PRODUTO"],
                 QTDE=it["QTDE"],
                 PRECO_UNITARIO=it["PRECO_UNITARIO"],
                 TOTAL_ITEM=it["TOTAL_ITEM"],
                 OBS_ITEM=it.get("OBS_ITEM", ""),
                 ID_GRADE=it.get("ID_GRADE"),
+                CODIGO_WABIZ=it.get("CODIGO_WABIZ", ""),
             )
             for it in body["ITEMS"]
         ]
@@ -285,7 +287,7 @@ def criar_pedido(body: dict):
         )
 
         view = PedidoView()
-        resultado = view.gravar_pedido(pedido)
+        resultado = view.gravar_pedido_novo(pedido)
         return resultado
 
     except KeyError as ke:

@@ -32,12 +32,10 @@ def _fmt_data(iso_str: str) -> str:
 
 
 def _endereco_completo(endereco) -> str:
-    """Monta string de endereço no formato 'RUA, NUMERO - COMPLEMENTO - CEP'."""
+    """Monta string de endereço no formato 'RUA, NUMERO - COMPLEMENTO'."""
     partes = [f"{endereco.RUA}, {endereco.NUMERO}"]
     if endereco.COMPLEMENTO:
         partes.append(endereco.COMPLEMENTO)
-    if endereco.CEP:
-        partes.append(endereco.CEP)
     return " - ".join(partes)
 
 
@@ -63,6 +61,20 @@ def _valor_pago(total_pedido: float, troco_para: float) -> float:
     TODO: valide cenários de múltiplas formas de pagamento.
     """
     return troco_para if troco_para > 0 else total_pedido
+
+
+def _montar_info_adicional(pedido: PedidoZion) -> str:
+    """Monta INFO_ADICIONAL com observação do pedido e observação de entrega."""
+    obs_pedido = str(getattr(pedido, "OBS_PEDIDO", "") or "").strip()
+    obs_entrega = str(getattr(pedido.ENDERECO_ENTREGA, "OBS_ENTREGADOR", "") or "").strip()
+
+    partes = []
+    if obs_pedido:
+        partes.append(obs_pedido)
+    if obs_entrega:
+        partes.append(obs_entrega)
+
+    return " | ".join(partes)
 
 
 def mapear_pedido(pedido: PedidoZion) -> RequestPedidoPDV:
@@ -103,7 +115,7 @@ def mapear_pedido(pedido: PedidoZion) -> RequestPedidoPDV:
         TOTAL_PEDIDO=pedido.TOTAL_PEDIDO,
         MOTIVO_DEVOLUCAO="",
         ID_TRANSPORTE=0,
-        INFO_ADICIONAL=pedido.OBS_PEDIDO,
+        INFO_ADICIONAL=_montar_info_adicional(pedido),
         NUMERO_PEDIDO_ZE_DELIVERY=0,
         NUMERO_PEDIDO_DELIVERY=pedido.NUMERO_PEDIDO,        # referência ao pedido Zion
         NUMERO_PEDIDO_LALAMOVE="",
@@ -143,6 +155,7 @@ def mapear_pedido(pedido: PedidoZion) -> RequestPedidoPDV:
             OBS_ITEM=it.OBS_ITEM,
             ID_ITEM_LOCAL=0,
             ID_TERMINAL=0,
+            CODIGO_WABIZ=it.CODIGO_WABIZ,
         )
         for it in pedido.ITEMS
     ]

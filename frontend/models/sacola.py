@@ -49,6 +49,7 @@ class Sacola:
             "ITEMS": [
                 {
                     "ID_PRODUTO": it.ID_PRODUTO,
+                    "CODIGO_WABIZ": it.CODIGO_WABIZ,
                     "DESCRICAO_PRODUTO": it.DESCRICAO_PRODUTO,
                     "QTDE": it.QTDE,
                     "PRECO_UNITARIO": it.PRECO_UNITARIO,

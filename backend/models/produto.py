@@ -9,6 +9,7 @@ class Produto:
     PRECO_DELIVERY: float
     PRODUTO_ATIVO: int
     FOTO_PRODUTO: Optional[str]
+    CODIGO_WABIZ: str = ""
 
 
 @dataclass
@@ -22,3 +23,4 @@ class ProdutoCreate:
     ID_FAMILIA: int
     ID_EMPRESA: int
     PRODUTO_ATIVO: int
+    CODIGO_WABIZ: str

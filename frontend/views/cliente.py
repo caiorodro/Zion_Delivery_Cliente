@@ -10,12 +10,16 @@ from frontend.style.zControls import (
 class Cliente:
     """View 3 – Nome do cliente e CPF no cupom fiscal."""
 
+    STORAGE_KEY_CLIENTE = "zion_cliente_v1"
+
     def __init__(self, page: ft.Page, sacola):
         self.page = page
         self.sacola = sacola
         self.panel = None
+        self._dados_cliente_salvo: dict = {}
         self._init_controls()
         self._build_layout()
+        self._carregar_cliente_salvo_local()
 
     # ─── Inicialização ──────────────────────────────────────────
 
@@ -32,6 +36,12 @@ class Cliente:
             width=200,
             keyboard_type=ft.KeyboardType.PHONE,
             hint_text="(00) 00000-0000"
+        )
+
+        self.txt_obs = zTextField(
+            label="Observações do pedido",
+            width=520,
+            hint_text="Ex.: retirar sem cebola, ponto de referência, etc."
         )
         
         self.chk_cpf = ft.Checkbox(
@@ -86,6 +96,7 @@ class Cliente:
                                 zLabel("Informe seus dados para que possamos identificar o pedido:"),
                                 ft.Row([self.txt_nome], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
                                 ft.Row([self.txt_telefone], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
+                                ft.Row([self.txt_obs], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
                                 ft.Row([self.chk_cpf], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
                                 ft.Row([self.txt_cpf], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
                                 ft.Row(
@@ -129,22 +140,61 @@ class Cliente:
             TELEFONE=(self.txt_telefone.value or "").strip(),
             CPF_NO_CUPOM=self.chk_cpf.value,
         )
+        self.sacola.OBS_PEDIDO = (self.txt_obs.value or "").strip()
+        self._salvar_cliente_local(self.sacola.DADOS_CLIENTE, self.sacola.OBS_PEDIDO)
 
         self.page.go("/pagamento")
 
     def carregar_dados(self):
         """Preenche campos com dados já salvos na sacola."""
         c = self.sacola.DADOS_CLIENTE
-        self.txt_nome.value = c.NOME_CLIENTE
-        self.txt_telefone.value = c.TELEFONE
-        self.chk_cpf.value = c.CPF_NO_CUPOM
-        self.txt_cpf.value = c.CPF
-        self.txt_cpf.visible = c.CPF_NO_CUPOM
+        nome = (c.NOME_CLIENTE or "").strip() or str(self._dados_cliente_salvo.get("NOME_CLIENTE") or "").strip()
+        telefone = (c.TELEFONE or "").strip() or str(self._dados_cliente_salvo.get("TELEFONE") or "").strip()
+        obs_pedido = (self.sacola.OBS_PEDIDO or "").strip() or str(self._dados_cliente_salvo.get("OBS_PEDIDO") or "").strip()
+
+        cpf_no_cupom = bool(c.CPF_NO_CUPOM)
+        if not cpf_no_cupom:
+            cpf_no_cupom = bool(self._dados_cliente_salvo.get("CPF_NO_CUPOM"))
+
+        cpf = (c.CPF or "").strip() or str(self._dados_cliente_salvo.get("CPF") or "").strip()
+
+        self.txt_nome.value = nome
+        self.txt_telefone.value = telefone
+        self.txt_obs.value = obs_pedido
+        self.chk_cpf.value = cpf_no_cupom
+        self.txt_cpf.value = cpf
+        self.txt_cpf.visible = cpf_no_cupom
         try:
             self.txt_nome.update()
             self.txt_telefone.update()
+            self.txt_obs.update()
             self.chk_cpf.update()
             self.txt_cpf.update()
+        except Exception:
+            pass
+
+    def _carregar_cliente_salvo_local(self):
+        try:
+            dados = self.page.client_storage.get(self.STORAGE_KEY_CLIENTE)
+        except Exception:
+            dados = None
+
+        if not isinstance(dados, dict):
+            return
+
+        self._dados_cliente_salvo = dados
+
+    def _salvar_cliente_local(self, dados_cliente: DadosCliente, obs_pedido: str):
+        payload = {
+            "NOME_CLIENTE": dados_cliente.NOME_CLIENTE,
+            "CPF": dados_cliente.CPF,
+            "TELEFONE": dados_cliente.TELEFONE,
+            "CPF_NO_CUPOM": bool(dados_cliente.CPF_NO_CUPOM),
+            "OBS_PEDIDO": (obs_pedido or "").strip(),
+        }
+        try:
+            self.page.client_storage.set(self.STORAGE_KEY_CLIENTE, payload)
+            self._dados_cliente_salvo = payload
         except Exception:
             pass
 

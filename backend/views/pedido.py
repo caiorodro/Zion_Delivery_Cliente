@@ -1,4 +1,5 @@
 import datetime
+import re
 from typing import Optional
 
 from base.database import get_connection
@@ -130,6 +131,71 @@ class PedidoView:
             return ""
         return "".join(ch for ch in raw if ch.isdigit())
 
+    def _extract_address_fields(self, pedido_data: dict) -> dict:
+        """Normaliza endereço em campos separados, inclusive quando vier em ENDERECO_CLIENTE."""
+        pedido_norm = {str(k).upper(): v for k, v in (pedido_data or {}).items()}
+
+        rua = str(
+            pedido_norm.get("RUA")
+            or pedido_norm.get("ENDERECO")
+            or pedido_norm.get("LOGRADOURO")
+            or ""
+        ).strip()
+        numero = str(pedido_norm.get("NUMERO") or pedido_norm.get("NUMERO_ENDERECO") or "").strip()
+        complemento = str(
+            pedido_norm.get("COMPLEMENTO")
+            or pedido_norm.get("COMPLEMENTO_ENDERECO")
+            or ""
+        ).strip()
+        bairro = str(
+            pedido_norm.get("BAIRRO")
+            or pedido_norm.get("BAIRRO_CLIENTE")
+            or ""
+        ).strip()
+        cidade = str(pedido_norm.get("CIDADE") or pedido_norm.get("CIDADE_CLIENTE") or "").strip()
+        uf = str(pedido_norm.get("UF") or pedido_norm.get("UF_CLIENTE") or "").strip()
+        cep = self._normalize_cep(pedido_norm.get("CEP"))
+
+        endereco_cliente = str(pedido_norm.get("ENDERECO_CLIENTE") or "").strip()
+        if endereco_cliente:
+            # Formato esperado comum: "RUA, NUMERO - COMPLEMENTO - CEP"
+            partes = [p.strip() for p in endereco_cliente.split(" - ") if p.strip()]
+            primeira_parte = partes[0] if partes else endereco_cliente
+
+            if not rua:
+                rua = primeira_parte
+
+            if "," in primeira_parte:
+                rua_base, numero_base = primeira_parte.rsplit(",", 1)
+                numero_base = numero_base.strip()
+                if not numero and numero_base:
+                    numero = numero_base
+                if rua_base.strip():
+                    rua = rua_base.strip()
+
+            if not complemento and len(partes) >= 2:
+                possivel_complemento = partes[1].strip()
+                if possivel_complemento:
+                    complemento = possivel_complemento
+
+            if not cep:
+                match_cep = re.search(r"\b\d{5}-?\d{3}\b", endereco_cliente)
+                if match_cep:
+                    cep = self._normalize_cep(match_cep.group(0))
+
+        numero = numero or "SN"
+        complemento = complemento or ""
+
+        return {
+            "RUA": rua,
+            "NUMERO": numero,
+            "COMPLEMENTO": complemento,
+            "BAIRRO": bairro,
+            "CIDADE": cidade,
+            "UF": uf,
+            "CEP": cep,
+        }
+
     def _get_or_create_cliente_id(self, cursor, pedido_data: dict) -> int:
         columns_meta = self._get_columns_meta(cursor, "tb_cliente")
         if not columns_meta:
@@ -191,6 +257,7 @@ class PedidoView:
             or pedido_norm.get("TELEFONE")
             or ""
         ).strip()
+        endereco = self._extract_address_fields(pedido_data)
 
         row_cliente = {
             "NOME_CLIENTE": nome_cliente,
@@ -199,6 +266,18 @@ class PedidoView:
             "CPF": cpf_cliente,
             "TELEFONE_CLIENTE": telefone_cliente,
             "TELEFONE": telefone_cliente,
+            "ENDERECO": endereco["RUA"],
+            "ENDERECO_CLIENTE": endereco["RUA"],
+            "RUA": endereco["RUA"],
+            "NUMERO": endereco["NUMERO"],
+            "NUMERO_ENDERECO": endereco["NUMERO"],
+            "COMPLEMENTO": endereco["COMPLEMENTO"],
+            "COMPLEMENTO_ENDERECO": endereco["COMPLEMENTO"],
+            "BAIRRO": endereco["BAIRRO"],
+            "BAIRRO_CLIENTE": endereco["BAIRRO"],
+            "CEP": endereco["CEP"],
+            "CIDADE": endereco["CIDADE"],
+            "UF": endereco["UF"],
         }
 
         id_cliente = self._insert_dynamic_row(cursor, "tb_cliente", row_cliente)
@@ -250,9 +329,9 @@ class PedidoView:
         if not cep_col:
             raise ValueError("Não foi possível identificar a coluna CEP em tb_endereco_cliente")
 
-        pedido_norm = {str(k).upper(): v for k, v in (pedido_data or {}).items()}
+        endereco = self._extract_address_fields(pedido_data)
 
-        cep_cliente = self._normalize_cep(pedido_norm.get("CEP"))
+        cep_cliente = endereco["CEP"]
 
         if not cep_cliente:
             raise ValueError("CEP é obrigatório para localizar ou inserir endereço")
@@ -272,29 +351,21 @@ class PedidoView:
         if row:
             return int(row[0])
 
-        endereco_cliente = str(pedido_norm.get("ENDERECO_CLIENTE") or "").strip()
-        rua = str(pedido_norm.get("RUA") or endereco_cliente).strip()
-        numero = str(pedido_norm.get("NUMERO") or "").strip()
-        complemento = str(pedido_norm.get("COMPLEMENTO") or "").strip()
-        bairro = str(
-            pedido_norm.get("BAIRRO")
-            or pedido_norm.get("BAIRRO_CLIENTE")
-            or ""
-        ).strip()
-        cidade = str(pedido_norm.get("CIDADE") or "").strip()
-        uf = str(pedido_norm.get("UF") or "").strip()
-
         row_endereco = {
             "ID_CLIENTE": id_cliente,
             "CEP": cep_cliente,
-            "ENDERECO": rua,
-            "RUA": rua,
-            "LOGRADOURO": rua,
-            "NUMERO": numero,
-            "COMPLEMENTO": complemento,
-            "BAIRRO": bairro,
-            "CIDADE": cidade,
-            "UF": uf,
+            "ENDERECO": endereco["RUA"],
+            "ENDERECO_CLIENTE": endereco["RUA"],
+            "RUA": endereco["RUA"],
+            "LOGRADOURO": endereco["RUA"],
+            "NUMERO": endereco["NUMERO"],
+            "NUMERO_ENDERECO": endereco["NUMERO"],
+            "COMPLEMENTO": endereco["COMPLEMENTO"],
+            "COMPLEMENTO_ENDERECO": endereco["COMPLEMENTO"],
+            "BAIRRO": endereco["BAIRRO"],
+            "BAIRRO_CLIENTE": endereco["BAIRRO"],
+            "CIDADE": endereco["CIDADE"],
+            "UF": endereco["UF"],
         }
 
         id_endereco = self._insert_dynamic_row(cursor, "tb_endereco_cliente", row_endereco)
@@ -473,6 +544,40 @@ class PedidoView:
 
         return raw
 
+    def _resolver_id_produto_por_codigo_wabiz(self, cursor, row_item: dict) -> None:
+        """Resolve ID_PRODUTO em row_item quando CODIGO_WABIZ for informado."""
+        codigo_wabiz = str((row_item or {}).get("CODIGO_WABIZ") or "").strip()
+        if not codigo_wabiz:
+            return
+
+        cursor.execute(
+            "SELECT ID_PRODUTO FROM tb_produto WHERE CODIGO_WABIZ = %s LIMIT 1",
+            (codigo_wabiz,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise ValueError(
+                f"Produto com CODIGO_WABIZ '{codigo_wabiz}' não encontrado em tb_produto"
+            )
+
+        row_item["ID_PRODUTO"] = int(row[0])
+
+    def _montar_info_adicional_pedido(self, pedido_data: dict) -> str:
+        """Monta INFO_ADICIONAL com observação do pedido e CPF no cupom fiscal."""
+        info_atual = str((pedido_data or {}).get("INFO_ADICIONAL") or "").strip()
+
+        cpf_valor = str((pedido_data or {}).get("CPF") or "").strip()
+        incluir_msg_cpf = bool(cpf_valor) and cpf_valor.upper() != "ISENTO"
+        msg_cpf = "Informar CPF no cupom fiscal"
+
+        partes = []
+        if info_atual:
+            partes.append(info_atual)
+        if incluir_msg_cpf and msg_cpf.lower() not in info_atual.lower():
+            partes.append(msg_cpf)
+
+        return " | ".join(partes)
+
     def gravar_pedido_robo(self, payload: dict) -> dict:
         """
         Recebe payload do robô e grava nas tabelas:
@@ -509,6 +614,7 @@ class PedidoView:
             pedido_data["ID_ENDERECO"] = id_endereco
             pedido_data["ID_CAIXA"] = id_caixa
             pedido_data["ID_TRANSPORTE"] = id_transporte
+            pedido_data["INFO_ADICIONAL"] = self._montar_info_adicional_pedido(pedido_data)
 
             numero_pedido = self._insert_dynamic_row(cursor, "tb_pedido", pedido_data)
             if numero_pedido <= 0:
@@ -520,6 +626,7 @@ class PedidoView:
                 if not isinstance(item, dict):
                     raise ValueError("Todos os itens de 'itemsPedido' devem ser objeto")
                 row_item = dict(item)
+                self._resolver_id_produto_por_codigo_wabiz(cursor, row_item)
                 row_item["NUMERO_PEDIDO"] = numero_pedido
                 self._insert_dynamic_row(cursor, "tb_item_pedido", row_item)
 
@@ -528,12 +635,19 @@ class PedidoView:
                 row_atendimento["PRECO"] = row_atendimento.get("PRECO_UNITARIO")
                 row_atendimento["FECHADO"] = 1
                 row_atendimento["DATA_HORA"] = datetime.datetime.now()
-                row_atendimento["NUMERO_ENDERECO"] = str(
-                    row_atendimento.get("NUMERO_ENDERECO") or ""
-                )
-                row_atendimento["COMPLEMENTO_ENDERECO"] = str(
-                    row_atendimento.get("COMPLEMENTO_ENDERECO") or ""
-                )
+
+                numero_endereco = row_atendimento.get("NUMERO_ENDERECO")
+                if numero_endereco in (None, ""):
+                    numero_endereco = pedido_data.get("NUMERO")
+                numero_endereco = str(numero_endereco or "").strip() or "SN"
+
+                complemento_endereco = row_atendimento.get("COMPLEMENTO_ENDERECO")
+                if complemento_endereco is None:
+                    complemento_endereco = pedido_data.get("COMPLEMENTO")
+                complemento_endereco = str(complemento_endereco or "").strip()
+
+                row_atendimento["NUMERO_ENDERECO"] = numero_endereco
+                row_atendimento["COMPLEMENTO_ENDERECO"] = complemento_endereco
                 self._insert_dynamic_row(cursor, "tb_atendimento_comanda", row_atendimento)
 
             for pg in pagamento_data:
@@ -752,16 +866,18 @@ class PedidoView:
 
             sql_itens = f"""
                 SELECT
-                    NUMERO_PEDIDO,
-                    ID_PRODUTO,
-                    DESCRICAO_PRODUTO,
-                    ID_GRADE,
-                    QTDE,
-                    PRECO_UNITARIO,
-                    TOTAL_ITEM,
-                    OBS_ITEM
-                FROM tb_item_pedido_delivery
-                WHERE NUMERO_PEDIDO IN ({placeholders})
+                    i.NUMERO_PEDIDO,
+                    i.ID_PRODUTO,
+                    i.DESCRICAO_PRODUTO,
+                    i.ID_GRADE,
+                    i.QTDE,
+                    i.PRECO_UNITARIO,
+                    i.TOTAL_ITEM,
+                    i.OBS_ITEM,
+                    p.CODIGO_WABIZ
+                FROM tb_item_pedido_delivery i
+                LEFT JOIN tb_produto p ON p.ID_PRODUTO = i.ID_PRODUTO
+                WHERE i.NUMERO_PEDIDO IN ({placeholders})
             """
             cursor.execute(sql_itens, numeros_pedido)
             itens_rows = cursor.fetchall()
@@ -784,6 +900,7 @@ class PedidoView:
                     "PRECO_UNITARIO": float(item[5]),
                     "TOTAL_ITEM": float(item[6]),
                     "OBS_ITEM": item[7] or "",
+                    "CODIGO_WABIZ": str(item[8]) if item[8] else "",
                 })
 
             result = []
@@ -873,6 +990,120 @@ class PedidoView:
 
         except Exception as ex:
             append_exception_log("pedido.aceitar_pedido", ex)
+            conn.rollback()
+            raise ex
+        finally:
+            conn.close()
+
+    def gravar_pedido_novo(self, pedido: Pedido) -> dict:
+        """Grava o pedido resolvendo ID_PRODUTO pelo CODIGO_WABIZ de cada item."""
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+
+            # Resolve CODIGO_WABIZ → ID_PRODUTO para cada item
+            itens_resolvidos = []
+            for item in pedido.ITEMS:
+                id_produto = item.ID_PRODUTO
+                if item.CODIGO_WABIZ:
+                    cursor.execute(
+                        "SELECT ID_PRODUTO FROM tb_produto WHERE CODIGO_WABIZ = %s LIMIT 1",
+                        (item.CODIGO_WABIZ,),
+                    )
+                    row = cursor.fetchone()
+                    if not row:
+                        raise ValueError(
+                            f"Produto com CODIGO_WABIZ '{item.CODIGO_WABIZ}' não encontrado em tb_produto"
+                        )
+                    id_produto = int(row[0])
+                itens_resolvidos.append((item, id_produto))
+
+            # Insere cabeçalho do pedido
+            sql_pedido = """
+                INSERT INTO tb_pedido_delivery (
+                    NOME_CLIENTE,
+                    CPF_CLIENTE,
+                    TELEFONE_CLIENTE,
+                    RUA,
+                    NUMERO,
+                    COMPLEMENTO,
+                    CEP,
+                    BAIRRO,
+                    CIDADE,
+                    UF,
+                    OBS_ENTREGADOR,
+                    OBS_PEDIDO,
+                    TAXA_ENTREGA,
+                    TOTAL_PRODUTOS,
+                    TOTAL_PEDIDO,
+                    FORMA_PAGAMENTO,
+                    TROCO_PARA,
+                    STATUS_PEDIDO,
+                    ORIGEM,
+                    DATA_HORA
+                ) VALUES (
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                )
+            """
+            now = datetime.datetime.now()
+            cursor.execute(sql_pedido, (
+                pedido.DADOS_CLIENTE.NOME_CLIENTE,
+                pedido.DADOS_CLIENTE.CPF,
+                pedido.DADOS_CLIENTE.TELEFONE,
+                pedido.ENDERECO_ENTREGA.RUA,
+                pedido.ENDERECO_ENTREGA.NUMERO,
+                pedido.ENDERECO_ENTREGA.COMPLEMENTO,
+                pedido.ENDERECO_ENTREGA.CEP,
+                pedido.ENDERECO_ENTREGA.BAIRRO,
+                pedido.ENDERECO_ENTREGA.CIDADE,
+                pedido.ENDERECO_ENTREGA.UF,
+                pedido.ENDERECO_ENTREGA.OBS_ENTREGADOR,
+                pedido.OBS_PEDIDO,
+                pedido.TAXA_ENTREGA,
+                pedido.TOTAL_PRODUTOS,
+                pedido.TOTAL_PEDIDO,
+                pedido.PAGAMENTO.FORMA_PAGAMENTO,
+                pedido.PAGAMENTO.TROCO_PARA,
+                0,  # STATUS_PEDIDO = Aguardando
+                pedido.ORIGEM,
+                now,
+            ))
+
+            numero_pedido = cursor.lastrowid
+
+            # Insere itens do pedido com ID_PRODUTO resolvido
+            sql_item = """
+                INSERT INTO tb_item_pedido_delivery (
+                    NUMERO_PEDIDO,
+                    ID_PRODUTO,
+                    DESCRICAO_PRODUTO,
+                    ID_GRADE,
+                    QTDE,
+                    PRECO_UNITARIO,
+                    TOTAL_ITEM,
+                    OBS_ITEM
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            for item, id_produto in itens_resolvidos:
+                cursor.execute(sql_item, (
+                    numero_pedido,
+                    id_produto,
+                    item.DESCRICAO_PRODUTO,
+                    item.ID_GRADE,
+                    item.QTDE,
+                    item.PRECO_UNITARIO,
+                    item.TOTAL_ITEM,
+                    item.OBS_ITEM,
+                ))
+
+            conn.commit()
+            cursor.close()
+
+            return {"NUMERO_PEDIDO": numero_pedido, "STATUS": 0}
+
+        except Exception as ex:
+            append_exception_log("pedido.gravar_pedido_novo", ex)
             conn.rollback()
             raise ex
         finally:

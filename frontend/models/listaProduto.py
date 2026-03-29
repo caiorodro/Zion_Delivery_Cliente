@@ -8,3 +8,4 @@ class ListaProduto:
     PRECO_DELIVERY: float
     PRODUTO_ATIVO: int
     FOTO_PRODUTO: str = ""
+    CODIGO_WABIZ: str = ""

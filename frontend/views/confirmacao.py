@@ -84,7 +84,7 @@ class Confirmacao:
         )
         self.btn_inicio = zButton(
             text="Voltar para o inicio",
-            on_click=lambda e: self.page.go("/cardapio"),
+            on_click=self._resetar_pedido_e_voltar,
             width=240,
             visible=False,
         )
@@ -244,6 +244,8 @@ class Confirmacao:
         except Exception:
             pass
 
+        self._rolar_para_status()
+
         threading.Thread(target=self._enviar_pedido, daemon=True).start()
 
     def _enviar_pedido(self):
@@ -275,6 +277,8 @@ class Confirmacao:
             self.lbl_status.update()
         except Exception:
             pass
+
+        self._rolar_para_status()
 
         self._iniciar_polling()
 
@@ -340,6 +344,31 @@ class Confirmacao:
             self.lbl_status.update()
         except Exception:
             pass
+
+    def _rolar_para_status(self):
+        for target in (self.panel, self.page):
+            scroll_to = getattr(target, "scroll_to", None)
+            if not callable(scroll_to):
+                continue
+
+            try:
+                scroll_to(offset=-1, duration=500)
+                return
+            except Exception:
+                continue
+
+    def _resetar_pedido_e_voltar(self, e=None):
+        # Interrompe qualquer monitoramento em andamento do pedido atual.
+        self._polling_active = False
+        self._numero_pedido = None
+
+        # Limpa completamente a sacola para iniciar um novo pedido.
+        self.sacola.ITEMS.clear()
+
+        self.sacola.PAGAMENTO.FORMA_PAGAMENTO = ""
+        self.sacola.PAGAMENTO.TROCO_PARA = 0.0
+
+        self.page.go("/cardapio")
 
     def _mostrar_erro(self, msg: str):
         self.progress_envio.visible = False

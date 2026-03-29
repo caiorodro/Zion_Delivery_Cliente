@@ -79,6 +79,7 @@ class ItemPedidoPDV:
     OBS_ITEM: str
     ID_ITEM_LOCAL: int
     ID_TERMINAL: int
+    CODIGO_WABIZ: str = ""
 
 
 @dataclass

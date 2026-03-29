@@ -11,3 +11,4 @@ class ItemPedido:
     TOTAL_ITEM: float
     OBS_ITEM: str = ""
     ID_GRADE: Optional[int] = None
+    CODIGO_WABIZ: str = ""

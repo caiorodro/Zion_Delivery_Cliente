@@ -41,12 +41,15 @@ class ProdutoView:
         elif isinstance(foto_raw, str) and foto_raw.strip():
             foto_produto = foto_raw.strip()
 
+        codigo_wabiz = str(row[6]) if len(row) > 6 and row[6] else ""
+
         return Produto(
             ID_PRODUTO=row[0],
             DESCRICAO_PRODUTO=row[2],
             PRECO_DELIVERY=float(row[3]) if isinstance(row[3], Decimal) else (row[3] or 0.0),
             PRODUTO_ATIVO=row[4],
-            FOTO_PRODUTO=foto_produto
+            FOTO_PRODUTO=foto_produto,
+            CODIGO_WABIZ=codigo_wabiz
         ).__dict__
 
     def _default_value_by_type(self, data_type: str):
@@ -93,7 +96,8 @@ class ProdutoView:
                     p.DESCRICAO_PRODUTO,
                     p.{preco_column},
                     p.PRODUTO_ATIVO,
-                    p.FOTO_PRODUTO
+                    p.FOTO_PRODUTO,
+                    p.CODIGO_WABIZ
                 FROM tb_produto p
             """.format(preco_column=preco_column)
 
@@ -127,8 +131,8 @@ class ProdutoView:
             except:
                 pass
 
-    def update_produto(self, id_produto: int, body: dict) -> dict:
-        """Atualiza um produto da tb_produto pelo ID_PRODUTO."""
+    def update_produto(self, codigo_wabiz: str, body: dict) -> dict:
+        """Atualiza um produto da tb_produto pelo CODIGO_WABIZ."""
         allowed_fields = {
             "DESCRICAO_PRODUTO",
             "PRECO_DELIVERY",
@@ -148,8 +152,8 @@ class ProdutoView:
             preco_column = self._get_preco_column(cursor)
 
             cursor.execute(
-                "SELECT COUNT(1) FROM tb_produto WHERE ID_PRODUTO = %s",
-                (id_produto,),
+                "SELECT COUNT(1) FROM tb_produto WHERE CODIGO_WABIZ = %s",
+                (codigo_wabiz,),
             )
 
             exists = cursor.fetchone()
@@ -200,22 +204,24 @@ class ProdutoView:
                 updates.append("PRODUTO_ATIVO = %s")
                 values.append(produto_ativo)
 
-            sql = f"UPDATE tb_produto SET {', '.join(updates)} WHERE ID_PRODUTO = %s"
-            values.append(id_produto)
+            sql = f"UPDATE tb_produto SET {', '.join(updates)} WHERE CODIGO_WABIZ = %s"
+            values.append(codigo_wabiz)
             cursor.execute(sql, tuple(values))
             conn.commit()
 
             select_sql = f"""
                 SELECT
                     ID_PRODUTO,
+                    ID_PRODUTO,
                     DESCRICAO_PRODUTO,
                     {preco_column},
                     PRODUTO_ATIVO,
-                    FOTO_PRODUTO
+                    FOTO_PRODUTO,
+                    CODIGO_WABIZ
                 FROM tb_produto
-                WHERE ID_PRODUTO = %s
+                WHERE CODIGO_WABIZ = %s
             """
-            cursor.execute(select_sql, (id_produto,))
+            cursor.execute(select_sql, (codigo_wabiz,))
             row = cursor.fetchone()
             cursor.close()
 
@@ -261,7 +267,8 @@ class ProdutoView:
                 "ID_TRIBUTO": int(produto.ID_TRIBUTO),
                 "ID_FAMILIA": int(produto.ID_FAMILIA),
                 "ID_EMPRESA": int(produto.ID_EMPRESA),
-                "PRODUTO_ATIVO": int(produto.PRODUTO_ATIVO)
+                "PRODUTO_ATIVO": int(produto.PRODUTO_ATIVO),
+                "CODIGO_WABIZ": str(produto.CODIGO_WABIZ).strip()
             }
 
             if not required_values["DESCRICAO_PRODUTO"]:
@@ -301,6 +308,7 @@ class ProdutoView:
                 "ID_FAMILIA": required_values["ID_FAMILIA"],
                 "ID_EMPRESA": required_values["ID_EMPRESA"],
                 "PRODUTO_ATIVO": required_values["PRODUTO_ATIVO"],
+                "CODIGO_WABIZ": required_values["CODIGO_WABIZ"]
             }
         except Exception as ex:
             append_exception_log("produto.create_produto", ex)

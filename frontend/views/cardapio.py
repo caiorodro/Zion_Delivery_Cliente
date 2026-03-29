@@ -265,7 +265,7 @@ class Cardapio:
 
     def _get_card(self, produto) -> ft.Container:
         # Quantidade atual na sacola
-        existing = [it for it in self.sacola.ITEMS if it.ID_PRODUTO == produto.ID_PRODUTO]
+        existing = [it for it in self.sacola.ITEMS if it.CODIGO_WABIZ == produto.CODIGO_WABIZ]
         qtde_atual = existing[0].QTDE if existing else 0
 
         txt_qtde = ft.TextField(
@@ -278,7 +278,7 @@ class Cardapio:
             bgcolor="#ffffff",
             border_color=AppConfig.FONT_COLOR,
         )
-        self._qtde_map[produto.ID_PRODUTO] = txt_qtde
+        self._qtde_map[produto.CODIGO_WABIZ] = txt_qtde
 
         btn_minus = ft.IconButton(
             icon=ft.icons.REMOVE_CIRCLE_OUTLINE,
@@ -363,7 +363,7 @@ class Cardapio:
         self._atualizar_item_sacola(produto, val)
 
     def _atualizar_item_sacola(self, produto, qtde: int):
-        existing = [it for it in self.sacola.ITEMS if it.ID_PRODUTO == produto.ID_PRODUTO]
+        existing = [it for it in self.sacola.ITEMS if it.CODIGO_WABIZ == produto.CODIGO_WABIZ]
         total_item = round(qtde * produto.PRECO_DELIVERY, 2)
 
         if existing:
@@ -377,6 +377,7 @@ class Cardapio:
             self.sacola.ITEMS.append(
                 ItemPedido(
                     ID_PRODUTO=produto.ID_PRODUTO,
+                    CODIGO_WABIZ=produto.CODIGO_WABIZ,
                     DESCRICAO_PRODUTO=produto.DESCRICAO_PRODUTO,
                     QTDE=qtde,
                     PRECO_UNITARIO=produto.PRECO_DELIVERY,
@@ -393,8 +394,8 @@ class Cardapio:
 
     def resetar_qtdes(self):
         """Reseta quantidades exibidas no cardápio conforme a sacola atual."""
-        for id_produto, txt in self._qtde_map.items():
-            existing = [it for it in self.sacola.ITEMS if it.ID_PRODUTO == id_produto]
+        for codigo_wabiz, txt in self._qtde_map.items():
+            existing = [it for it in self.sacola.ITEMS if it.CODIGO_WABIZ == codigo_wabiz]
             txt.value = str(existing[0].QTDE if existing else 0)
             try:
                 txt.update()
