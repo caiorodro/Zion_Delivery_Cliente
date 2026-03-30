@@ -4,8 +4,8 @@ sudo chmod +x /tmp/install_zion_ubuntu24_from_backup.sh
 sudo env \
   GIT_REPO_URL="https://github.com/caiorodro/Zion_Delivery_Cliente.git" \
   CERTBOT_EMAIL="caiorodro@gmail.com" \
-  DOMAIN_API="ziondelivery.app.br" \
-  DOMAIN_APP="loja.ziondelivery.app.br" \
+  DOMAIN_API="service_beervt.ziondelivery.app.br" \
+  DOMAIN_APP="loja_beervt.ziondelivery.app.br" \
   DB_USERNAME="root" \
   DB_PASSWORD="56Runna01" \
   bash /tmp/install_zion_ubuntu24_from_backup.sh
