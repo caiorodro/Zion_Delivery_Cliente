@@ -45,7 +45,7 @@ class Cardapio:
         self.cb_familia = zDropdown(
             label="Família",
             options=opcoes,
-            width=260,
+            width=315,
             on_change=lambda e: self._carregar_cardapio()
         )
         self.cb_familia.value = 0
@@ -277,6 +277,7 @@ class Cardapio:
             color="#333333",
             bgcolor="#ffffff",
             border_color=AppConfig.FONT_COLOR,
+            on_change=lambda e, p=produto: self._on_change_qtde(e, p),
         )
         self._qtde_map[produto.CODIGO_WABIZ] = txt_qtde
 
@@ -361,6 +362,20 @@ class Cardapio:
         except Exception:
             pass
         self._atualizar_item_sacola(produto, val)
+
+    def _on_change_qtde(self, e: ft.ControlEvent, produto):
+        raw_val = str(e.control.value or "").strip()
+        digits_only = "".join(ch for ch in raw_val if ch.isdigit())
+
+        if raw_val != digits_only:
+            e.control.value = digits_only
+            try:
+                e.control.update()
+            except Exception:
+                pass
+
+        qtde = int(digits_only) if digits_only else 0
+        self._atualizar_item_sacola(produto, qtde)
 
     def _atualizar_item_sacola(self, produto, qtde: int):
         existing = [it for it in self.sacola.ITEMS if it.CODIGO_WABIZ == produto.CODIGO_WABIZ]
