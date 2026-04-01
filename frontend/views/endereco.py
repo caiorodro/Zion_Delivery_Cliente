@@ -3,6 +3,7 @@ import time
 import json
 import math
 import os
+import requests
 from typing import Optional
 
 import flet as ft
@@ -11,7 +12,7 @@ from frontend.base.server import ZionAPI
 from frontend.cfg.config import AppConfig
 from frontend.models.dadosEndereco import DadosEndereco
 from frontend.style.zControls import (
-    zButton, zTextField, zDropdown, zLabel, zTitle, zCard, zDivider, zSnackBar
+    zButton, zTextField, zDropdown, zLabel, zTitle, zDivider, zSnackBar
 )
 
 
@@ -25,7 +26,6 @@ class Endereco:
         self.sacola = sacola
         self.panel = None
         self._ufs: list = []
-        self._cidades: list = []
         self._enderecos: list = []
         self._dados_endereco_salvo: dict = {}
         self._latitude_cliente = None
@@ -50,8 +50,14 @@ class Endereco:
             label="CEP",
             width=130,
             keyboard_type=ft.KeyboardType.NUMBER,
-            hint_text="00000-000",
-            on_submit=self._buscar_por_cep
+            hint_text="00000000",
+            max_length=8
+        )
+        self.btn_buscar_cep = zButton(
+            text="Pesquisar CEP",
+            on_click=self._buscar_por_cep,
+            width=150,
+            icon=ft.icons.SEARCH,
         )
         self.txt_bairro = zTextField(label="Bairro *", width=220)
         self.txt_obs = zTextField(
@@ -61,27 +67,19 @@ class Endereco:
         )
 
         self.cb_uf = zDropdown(
-            label="Estado (UF) *",
+            label="UF *",
             width=120,
             on_change=self._on_uf_change
         )
-        self.txt_pesq_cidade = zTextField(
-            label="Filtrar cidade...",
-            width=200,
-            hint_text="Digite para filtrar",
-            on_change=self._on_pesq_cidade_change
-        )
-        self.cb_cidade = zDropdown(
-            label="Cidade *",
+        self.txt_cidade = zTextField(
+            label="Município *",
             width=260,
-            on_change=self._on_cidade_change
         )
 
         self.txt_pesq_rua = zTextField(
             label="Pesquisar rua / bairro / CEP",
             width=470,
-            hint_text="Mínimo 2 caracteres",
-            on_change=self._on_pesq_rua_change
+            hint_text="Mínimo 2 caracteres"
         )
 
         self.lst_enderecos = ft.ListView(
@@ -130,22 +128,19 @@ class Endereco:
                                 ),
                                 zDivider(),
 
-                                # UF, filtro de cidade e combo cidade
-                                zLabel("Selecione o estado e cidade para localizar o endereço:"),
-                                ft.Row([self.cb_uf, self.txt_pesq_cidade, self.cb_cidade], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
-
-                                # Pesquisa de rua
-                                zLabel("Pesquisar endereço:"),
-                                ft.Row([self.txt_pesq_rua], wrap=True, alignment=ft.MainAxisAlignment.START),
-                                self.lst_enderecos,
-
                                 zDivider(),
                                 zLabel("Preencha os dados abaixo:"),
 
+                                # CEP em primeiro lugar (chave da pesquisa)
+                                ft.Row([self.txt_cep, self.btn_buscar_cep], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
+
+                                # UF e município abaixo do CEP
+                                ft.Row([self.cb_uf, self.txt_cidade], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
+
                                 # Rua + número
                                 ft.Row([self.txt_rua, self.txt_numero], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
-                                # Complemento + CEP
-                                ft.Row([self.txt_complemento, self.txt_cep], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
+                                # Complemento
+                                ft.Row([self.txt_complemento], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
                                 # Bairro
                                 ft.Row([self.txt_bairro], wrap=True, alignment=ft.MainAxisAlignment.START),
                                 # Observações
@@ -179,80 +174,24 @@ class Endereco:
                 pass
 
             uf_salva = (self._dados_endereco_salvo.get("UF") or "").strip()
-            cidade_salva = (self._dados_endereco_salvo.get("CIDADE") or "").strip()
             if uf_salva and uf_salva in self._ufs:
                 self.cb_uf.value = uf_salva
-                self._carregar_cidades_da_uf(uf_salva, cidade_preselecionada=cidade_salva)
-
-            self._show_progress(False)
-
-        threading.Thread(target=_task, daemon=True).start()
-
-    def _carregar_cidades_da_uf(self, uf: str, cidade_preselecionada: str = ""):
-        api = ZionAPI()
-        cidades = api.get_cidades(uf)
-        self._cidades = cidades
-        self.cb_cidade.options = [
-            ft.dropdown.Option(key=c, text=c) for c in cidades
-        ]
-
-        if cidade_preselecionada and cidade_preselecionada in cidades:
-            self.cb_cidade.value = cidade_preselecionada
-            self.txt_pesq_cidade.value = cidade_preselecionada
-        else:
-            self.cb_cidade.value = None
-
-        try:
-            self.cb_uf.update()
-            self.txt_pesq_cidade.update()
-            self.cb_cidade.update()
-        except Exception:
-            pass
-
-    def _on_uf_change(self, e):
-        uf = self.cb_uf.value
-        if not uf:
-            return
-
-        def _task():
-            self._show_progress(True)
-            self.txt_pesq_cidade.value = ""
-            self._carregar_cidades_da_uf(uf)
             try:
-                self.txt_pesq_cidade.update()
+                self.cb_uf.update()
             except Exception:
                 pass
+
             self._show_progress(False)
 
         threading.Thread(target=_task, daemon=True).start()
 
-    def _on_cidade_change(self, e):
+    def _on_uf_change(self, e):
         self.txt_pesq_rua.value = ""
         self.lst_enderecos.controls.clear()
         self.lst_enderecos.visible = False
         try:
+            self.txt_pesq_rua.update()
             self.lst_enderecos.update()
-        except Exception:
-            pass
-
-    def _on_pesq_cidade_change(self, e):
-        """Filtra o combo de cidades conforme o usuário digita."""
-        termo = (self.txt_pesq_cidade.value or "").strip().lower()
-
-        if not termo:
-            filtradas = self._cidades
-        else:
-            filtradas = [c for c in self._cidades if termo in c.lower()]
-
-        self.cb_cidade.options = [
-            ft.dropdown.Option(key=c, text=c) for c in filtradas
-        ]
-
-        if len(filtradas) > 0:
-            self.cb_cidade.value = filtradas[0]
-
-        try:
-            self.cb_cidade.update()
         except Exception:
             pass
 
@@ -279,22 +218,110 @@ class Endereco:
     def onlyNumbers(self, s: str) -> str:
         return ''.join(filter(str.isdigit, s))  
 
+    def _validar_cep_nacional(self, cep: str) -> tuple[bool, str]:
+        cep_numerico = self.onlyNumbers(cep)
+        if cep != cep_numerico:
+            return False, "CEP deve conter somente números."
+        if len(cep_numerico) != 8:
+            return False, "CEP deve conter exatamente 8 dígitos."
+        return True, ""
+
+    def _get_google_api_key(self) -> str:
+        return (os.getenv("GOOGLE_MAPS_API_KEY") or AppConfig.GOOGLE_MAPS_API_KEY or "").strip()
+
+    def _buscar_cep_google_geocoding(self, cep: str) -> Optional[dict]:
+        cep_numerico = self.onlyNumbers(cep)
+        if len(cep_numerico) != 8:
+            return None
+
+        api_key = self._get_google_api_key()
+        if not api_key:
+            return None
+
+        url = "https://maps.googleapis.com/maps/api/geocode/json"
+        params = {
+            "address": cep_numerico,
+            "key": api_key,
+            "region": "br",
+            "language": "pt-BR",
+        }
+
+        try:
+            resp = requests.get(url, params=params, timeout=12)
+
+            if resp.status_code != 200:
+                return None
+
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                return None
+
+            if payload.get("status") != "OK":
+                return None
+
+            resultados = payload.get("results")
+            if not isinstance(resultados, list) or not resultados:
+                return None
+
+            item = resultados[0]
+            if not isinstance(item, dict):
+                return None
+
+            geometry = item.get("geometry") or {}
+            location = geometry.get("location") or {}
+            address_components = item.get("address_components") or []
+
+            def _pick_component(types: tuple[str, ...]) -> str:
+                for comp in address_components:
+                    if not isinstance(comp, dict):
+                        continue
+                    comp_types = comp.get("types") or []
+                    if any(t in comp_types for t in types):
+                        return str(comp.get("long_name") or "")
+                return ""
+
+            def _pick_component_short(types: tuple[str, ...]) -> str:
+                for comp in address_components:
+                    if not isinstance(comp, dict):
+                        continue
+                    comp_types = comp.get("types") or []
+                    if any(t in comp_types for t in types):
+                        return str(comp.get("short_name") or "")
+                return ""
+
+            logradouro = _pick_component(("route",))
+            bairro = _pick_component(("sublocality", "sublocality_level_1", "neighborhood"))
+            cidade = _pick_component(("administrative_area_level_2", "locality"))
+            uf = _pick_component_short(("administrative_area_level_1",))
+
+            return {
+                "LOGRADOURO": logradouro,
+                "BAIRRO": bairro,
+                "CEP": cep_numerico,
+                "LATITUDE": location.get("lat"),
+                "LONGITUDE": location.get("lng"),
+                "UF": uf,
+                "CIDADE": cidade,
+            }
+        except Exception:
+            return None
+
     def _executar_pesquisa(self, termo: str):
 
         api = ZionAPI()
 
         if len(self.onlyNumbers(termo)) == 8:
             self._show_progress(True)
-            enderecos = api.buscar_por_cep(termo)
-            self._enderecos = enderecos
+            endereco = self._buscar_cep_google_geocoding(self.onlyNumbers(termo))
+            self._enderecos = [endereco] if endereco else []
             self._show_progress(False)
 
-            if enderecos:
-                self._selecionar_endereco(enderecos[0])
+            if endereco:
+                self._selecionar_endereco(endereco)
                 return
 
         uf = self.cb_uf.value
-        cidade = self.cb_cidade.value
+        cidade = (self.txt_cidade.value or "").strip()
         if not uf or not cidade:
             return
 
@@ -323,16 +350,35 @@ class Endereco:
         self._show_progress(False)
 
     def _buscar_por_cep(self, e):
-        cep = (self.txt_cep.value or "").strip()
-        if len(cep) < 8:
+        cep_raw = (self.txt_cep.value or "").strip()
+        valido, erro = self._validar_cep_nacional(cep_raw)
+        if not valido:
+            self._show_snack(erro, error=True)
             return
 
+        cep = self.onlyNumbers(cep_raw)
+
+        self.txt_cep.value = cep
+        try:
+            self.txt_cep.update()
+        except Exception:
+            pass
+
+        self._consultar_cep_async(cep)
+
+    def _consultar_cep_async(self, cep: str):
         def _task():
             self._show_progress(True)
-            api = ZionAPI()
-            result = api.buscar_por_cep(cep)
-            if result:
-                self._selecionar_endereco(result[0])
+            if not self._get_google_api_key():
+                self._show_snack("Configure GOOGLE_MAPS_API_KEY para consultar CEP.", error=True)
+                self._show_progress(False)
+                return
+
+            endereco = self._buscar_cep_google_geocoding(cep)
+            if endereco:
+                self._selecionar_endereco(endereco)
+            else:
+                self._show_snack("CEP não encontrado no Google Geocoding.", error=True)
             self._show_progress(False)
 
         threading.Thread(target=_task, daemon=True).start()
@@ -351,19 +397,15 @@ class Endereco:
         cidade = end.get("CIDADE", "")
         if uf and self.cb_uf.value != uf:
             self.cb_uf.value = uf
-        if cidade and self.cb_cidade.value != cidade:
-            self.cb_cidade.value = cidade
-            self.txt_pesq_cidade.value = cidade
+        if cidade:
+            self.txt_cidade.value = cidade
 
         try:
             self.txt_rua.update()
             self.txt_bairro.update()
             self.txt_cep.update()
-            self.txt_pesq_rua.update()
-            self.txt_pesq_cidade.update()
-            self.lst_enderecos.update()
+            self.txt_cidade.update()
             self.cb_uf.update()
-            self.cb_cidade.update()
         except Exception as ex:
             print(f"Erro ao atualizar controles: {ex}")
 
@@ -380,7 +422,7 @@ class Endereco:
         ]
 
         uf = self.cb_uf.value
-        cidade = self.cb_cidade.value
+        cidade = (self.txt_cidade.value or "").strip()
 
         if not uf or not cidade:
             self._show_snack("Selecione o Estado e Cidade.", error=True)
@@ -450,8 +492,7 @@ class Endereco:
         if uf_salva:
             self.cb_uf.value = uf_salva
         if cidade_salva:
-            self.cb_cidade.value = cidade_salva
-            self.txt_pesq_cidade.value = cidade_salva
+            self.txt_cidade.value = cidade_salva
 
         try:
             self.txt_rua.update()
@@ -461,8 +502,7 @@ class Endereco:
             self.txt_bairro.update()
             self.txt_obs.update()
             self.cb_uf.update()
-            self.cb_cidade.update()
-            self.txt_pesq_cidade.update()
+            self.txt_cidade.update()
         except Exception:
             pass
 

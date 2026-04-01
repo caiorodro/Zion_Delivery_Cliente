@@ -31,3 +31,6 @@ class AppConfig:
     LOG_DIR = "/tmp"
     LOG_FILE = "/tmp/frontend.log"
     LOG_LEVEL = "INFO"
+
+    # Google Maps Geocoding API
+    GOOGLE_MAPS_API_KEY = "AIzaSyDhbR2xlxpQ2TK05gmpLBTvJRKwqvd8GVk"
