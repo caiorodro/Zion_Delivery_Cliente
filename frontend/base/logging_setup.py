@@ -5,9 +5,7 @@ from logging.handlers import RotatingFileHandler
 
 from frontend.cfg.config import AppConfig
 
-# Caminho absoluto para a raiz do projeto (dois níveis acima de frontend/base/)
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_LOG_DIR = os.path.join(_PROJECT_ROOT, "frontend", "log")
+_LOG_DIR = "/tmp"
 _LOG_FILE = os.path.join(_LOG_DIR, "frontend.log")
 
 

@@ -3,6 +3,7 @@ import time
 import json
 import math
 import os
+from typing import Optional
 
 import flet as ft
 
@@ -521,6 +522,109 @@ class Endereco:
         except Exception:
             return default_cfg
 
+    def _carregar_regras_frete(self) -> dict:
+        default_cfg = {
+            "valor_minimo_produtos": 50.0,
+            "faixas": [
+                {
+                    "km_inicial": 0.0,
+                    "km_final": 2.0,
+                    "valor_maior_ou_igual_minimo": 5.0,
+                    "valor_menor_minimo": 7.0,
+                },
+                {
+                    "km_inicial": 2.001,
+                    "km_final": 5.0,
+                    "valor_maior_ou_igual_minimo": 7.0,
+                    "valor_menor_minimo": 9.0,
+                },
+                {
+                    "km_inicial": 5.001,
+                    "km_final": 8.0,
+                    "valor_maior_ou_igual_minimo": 8.0,
+                    "valor_menor_minimo": 10.0,
+                },
+            ],
+        }
+
+        path_cfg = AppConfig.FRETE_REGRAS_CONFIG
+        os.makedirs(os.path.dirname(path_cfg), exist_ok=True)
+
+        if not os.path.exists(path_cfg):
+            with open(path_cfg, "w", encoding="utf-8") as f:
+                json.dump(default_cfg, f, ensure_ascii=False, indent=2)
+            return default_cfg
+
+        try:
+            with open(path_cfg, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+
+            if not isinstance(cfg, dict):
+                return default_cfg
+
+            faixas_raw = cfg.get("faixas")
+            if not isinstance(faixas_raw, list):
+                return default_cfg
+
+            valor_minimo = self._parse_float(cfg.get("valor_minimo_produtos"))
+            if valor_minimo is None:
+                valor_minimo = 50.0
+
+            faixas = []
+            for faixa in faixas_raw:
+                if not isinstance(faixa, dict):
+                    continue
+
+                km_inicial = self._parse_float(faixa.get("km_inicial"))
+                km_final = self._parse_float(faixa.get("km_final"))
+                valor_maior_igual = self._parse_float(faixa.get("valor_maior_ou_igual_minimo"))
+                valor_menor = self._parse_float(faixa.get("valor_menor_minimo"))
+
+                if None in (km_inicial, km_final, valor_maior_igual, valor_menor):
+                    continue
+
+                faixas.append(
+                    {
+                        "km_inicial": km_inicial,
+                        "km_final": km_final,
+                        "valor_maior_ou_igual_minimo": valor_maior_igual,
+                        "valor_menor_minimo": valor_menor,
+                    }
+                )
+
+            if not faixas:
+                return default_cfg
+
+            return {
+                "valor_minimo_produtos": valor_minimo,
+                "faixas": faixas,
+            }
+        except Exception:
+            return default_cfg
+
+    def _calcular_taxa_por_regras(self, distancia_km: float, total_produtos: float) -> Optional[float]:
+        cfg_frete = self._carregar_regras_frete()
+        valor_minimo = self._parse_float(cfg_frete.get("valor_minimo_produtos"))
+        if valor_minimo is None:
+            return None
+
+        faixas = cfg_frete.get("faixas")
+        if not isinstance(faixas, list):
+            return None
+
+        for faixa in faixas:
+            km_inicial = self._parse_float(faixa.get("km_inicial"))
+            km_final = self._parse_float(faixa.get("km_final"))
+            if None in (km_inicial, km_final):
+                continue
+
+            if km_inicial <= distancia_km <= km_final:
+                if total_produtos >= valor_minimo:
+                    return self._parse_float(faixa.get("valor_maior_ou_igual_minimo"))
+                return self._parse_float(faixa.get("valor_menor_minimo"))
+
+        return None
+
     def _haversine_km(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         r = 6371.0
         phi1 = math.radians(lat1)
@@ -535,6 +639,7 @@ class Endereco:
     def _calcular_taxa_entrega(self) -> tuple:
         cfg_loja = self._carregar_config_loja()
         taxa_fixa = self._parse_float(cfg_loja.get("taxa_entrega_fixa")) or AppConfig.TAXA_ENTREGA_FALLBACK
+        total_produtos = self._parse_float(getattr(self.sacola, "total_produtos", 0.0)) or 0.0
 
         lat_loja = self._parse_float(cfg_loja.get("latitude"))
         lon_loja = self._parse_float(cfg_loja.get("longitude"))
@@ -548,6 +653,13 @@ class Endereco:
             distancia_km = self._haversine_km(lat_loja, lon_loja, lat_cli, lon_cli)
         except Exception:
             return taxa_fixa, None
+
+        try:
+            taxa_por_regra = self._calcular_taxa_por_regras(distancia_km, total_produtos)
+            if taxa_por_regra is not None:
+                return taxa_por_regra, distancia_km
+        except Exception:
+            pass
 
         try:
             api = ZionAPI()

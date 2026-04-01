@@ -25,8 +25,9 @@ class AppConfig:
 
     # Configuração local da loja (lat/lon e fallback de frete)
     LOJA_CONFIG = "frontend/data/loja_config.json"
+    FRETE_REGRAS_CONFIG = "frontend/data/frete_regras.json"
 
     # Logging
-    LOG_DIR = "frontend/log"
-    LOG_FILE = "frontend/log/frontend.log"
+    LOG_DIR = "/tmp"
+    LOG_FILE = "/tmp/frontend.log"
     LOG_LEVEL = "INFO"
