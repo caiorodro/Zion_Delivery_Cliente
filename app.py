@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import logging
 import os
@@ -15,10 +16,8 @@ from frontend.views.cliente import Cliente
 from frontend.views.pagamento import Pagamento
 from frontend.views.confirmacao import Confirmacao
 
-
 setup_frontend_logging()
 logger = logging.getLogger(__name__)
-
 
 def _thread_excepthook(args: threading.ExceptHookArgs):
     logger.exception(
@@ -27,9 +26,7 @@ def _thread_excepthook(args: threading.ExceptHookArgs):
         exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
     )
 
-
 threading.excepthook = _thread_excepthook
-
 
 def main(page: ft.Page):
     logger.info("Inicializando frontend Zion Delivery")
@@ -139,12 +136,24 @@ def main(page: ft.Page):
         return view_confirmacao
 
     # ─── Roteamento ─────────────────────────────────────────────
+    def _retomar_sessao_se_necessario():
+        try:
+            if CacheManager.is_loaded() and page.route in ("/", "/splash"):
+                logger.info("Sessao reaproveitada com cache em memoria; redirecionando para /endereco")
+                page.go("/endereco")
+                return True
+        except Exception:
+            logger.exception("Falha ao retomar sessao a partir da splash")
+        return False
+
     def route_change(route):
         page.views.clear()
 
         r = page.route
 
         if r == "/splash" or r == "/":
+            if _retomar_sessao_se_necessario():
+                return
             page.views.append(splash)
 
         elif r == "/endereco":
@@ -182,13 +191,28 @@ def main(page: ft.Page):
         page.update()
 
     page.on_route_change = route_change
+    page.on_connect = lambda e: _retomar_sessao_se_necessario()
+    page.on_disconnect = lambda e: logger.info("Sessao desconectada: rota=%s", page.route)
 
     # ─── Download inicial do cardápio ───────────────────────────
-    def _init_data():
+    async def _atualizar_cache_em_segundo_plano():
         try:
+            ok = await asyncio.to_thread(CacheManager.download_e_salvar)
+            if ok:
+                logger.info("Cache atualizado com sucesso a partir da API")
+            elif CacheManager.is_loaded():
+                logger.warning("API indisponível ou lenta; mantendo dados do cache local")
+        except Exception:
+            logger.exception("Falha ao atualizar cache em segundo plano")
+
+    async def _init_data():
+        try:
+            carregou_cache_local = False
+
             try:
                 api = ZionAPI()
-                dados_empresa = api.get_dados_empresa_splash() or {}
+                dados_empresa = await asyncio.to_thread(api.get_dados_empresa_splash)
+                dados_empresa = dados_empresa or {}
                 nome_fantasia = str(dados_empresa.get("NOME_FANTASIA") or "").strip()
                 if nome_fantasia:
                     lbl_empresa.value = nome_fantasia
@@ -196,16 +220,26 @@ def main(page: ft.Page):
             except Exception:
                 logger.exception("Falha ao carregar nome fantasia para splash")
 
-            # Tenta carregar cache local primeiro para reduzir tempo de abertura.
-            if CacheManager.carregar_cache_local():
+            try:
+                carregou_cache_local = await asyncio.to_thread(CacheManager.carregar_cache_local)
+            except Exception:
+                carregou_cache_local = False
+                logger.exception("Falha ao carregar cache local")
+
+            if carregou_cache_local:
                 logger.info("Cache local carregado com sucesso")
-                lbl_loading.value = "Cache carregado! Atualizando..."
+                lbl_loading.value = "Cache carregado! Entrando..."
                 try:
                     lbl_loading.update()
                 except Exception:
                     logger.exception("Falha ao atualizar label de loading")
 
-            ok = CacheManager.download_e_salvar()
+                page.go("/endereco")
+                page.run_task(_atualizar_cache_em_segundo_plano)
+                return
+
+            ok = await asyncio.to_thread(CacheManager.download_e_salvar)
+
             if not ok and not CacheManager.is_loaded():
                 logger.error("Sem conexao com API e sem cache local disponivel")
                 lbl_loading.value = "⚠ Sem conexão. Tente novamente."
@@ -215,7 +249,9 @@ def main(page: ft.Page):
                     logger.exception("Falha ao atualizar label de erro de conexao")
                 return
 
-            # Navega para a tela de endereço
+            if ok:
+                logger.info("Cache atualizado com sucesso a partir da API")
+
             page.go("/endereco")
         except Exception:
             logger.exception("Erro nao tratado durante inicializacao de dados do frontend")
@@ -228,7 +264,7 @@ def main(page: ft.Page):
     page.views.append(splash)
     page.go("/splash")
 
-    threading.Thread(target=_init_data, daemon=True).start()
+    page.run_task(_init_data)
 
 
 ft.app(

@@ -39,11 +39,11 @@ class CacheManager:
         return []
 
     @classmethod
-    def download_e_salvar(cls) -> bool:
+    def download_e_salvar(cls, cpf: str = "", telefone: str = "") -> bool:
         """Baixa dados da API e salva em JSON local, além de atualizar memória."""
         api = ZionAPI()
         try:
-            produtos = api.download_produtos()
+            produtos = api.download_produtos(cpf=cpf, telefone=telefone)
             familias = api.download_familias()
             grades = api.download_grades()
 

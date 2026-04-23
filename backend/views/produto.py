@@ -65,29 +65,22 @@ class ProdutoView:
             return 0
         return ""
 
-    async def get_all_produtos(self) -> List[dict]:
-        """Retorna todos os produtos ativos com preço delivery > 0."""
-        
+    def _normalize_digits(self, value: str) -> str:
+        return "".join(ch for ch in str(value or "") if ch.isdigit())
+
+    async def get_all_produtos(self, cpf: str = "", telefone: str = "") -> List[dict]:
+        """Retorna produtos ativos priorizando o último pedido do cliente e os mais vendidos nos últimos 15 dias."""
+
         conn = None
 
         try:
             conn = get_connection()
             cursor = conn.cursor()
             preco_column = self._get_preco_column(cursor)
+            tabela_pedido, tabela_item = self._resolver_tabelas_historico(cursor)
 
-            historico_join = f"""
-                LEFT JOIN (
-                    SELECT
-                        ip.ID_PRODUTO,
-                        SUM(ip.QTDE) AS QTDE_VENDIDA
-                    FROM tb_item_pedido ip
-                    INNER JOIN tb_pedido p
-                        ON p.NUMERO_PEDIDO = ip.NUMERO_PEDIDO
-                    WHERE p.STATUS_PEDIDO = 3
-                        AND p.DATA_HORA < CURDATE()
-                    GROUP BY ip.ID_PRODUTO
-                ) h ON h.ID_PRODUTO = p.ID_PRODUTO
-            """
+            cpf_digits = self._normalize_digits(cpf)
+            telefone_digits = self._normalize_digits(telefone)
 
             sql = """
                 SELECT
@@ -101,26 +94,84 @@ class ProdutoView:
                 FROM tb_produto p
             """.format(preco_column=preco_column)
 
-            sql += historico_join
+            params = []
+            order_parts = []
+
+            if tabela_pedido and tabela_item:
+                sql += f"""
+                    LEFT JOIN (
+                        SELECT
+                            ip.ID_PRODUTO,
+                            SUM(COALESCE(ip.QTDE, 0)) AS QTDE_VENDIDA_15D
+                        FROM {tabela_item} ip
+                        INNER JOIN {tabela_pedido} ped
+                            ON ped.NUMERO_PEDIDO = ip.NUMERO_PEDIDO
+                        WHERE ped.DATA_HORA >= (NOW() - INTERVAL 15 DAY)
+                          AND COALESCE(ped.STATUS_PEDIDO, 0) <> 99
+                        GROUP BY ip.ID_PRODUTO
+                    ) h15 ON h15.ID_PRODUTO = p.ID_PRODUTO
+                """
+
+                filtros_cliente = []
+                if telefone_digits:
+                    filtros_cliente.append(
+                        "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(ped2.TELEFONE_CLIENTE, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = %s"
+                    )
+                    params.append(telefone_digits)
+
+                if cpf_digits:
+                    filtros_cliente.append(
+                        "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(ped2.CPF_CLIENTE, ''), '.', ''), '-', ''), ' ', ''), '/', '') = %s"
+                    )
+                    params.append(cpf_digits)
+
+                if filtros_cliente:
+                    filtro_cliente_sql = " OR ".join(filtros_cliente)
+                    sql += f"""
+                        LEFT JOIN (
+                            SELECT
+                                ult.ID_PRODUTO,
+                                MIN(ult.ORDEM_ITEM) AS POSICAO_ULTIMO_PEDIDO
+                            FROM (
+                                SELECT
+                                    ip.ID_PRODUTO,
+                                    ip.ID_ITEM AS ORDEM_ITEM
+                                FROM {tabela_item} ip
+                                INNER JOIN (
+                                    SELECT ped2.NUMERO_PEDIDO
+                                    FROM {tabela_pedido} ped2
+                                    WHERE COALESCE(ped2.STATUS_PEDIDO, 0) <> 99
+                                      AND ({filtro_cliente_sql})
+                                    ORDER BY ped2.DATA_HORA DESC, ped2.NUMERO_PEDIDO DESC
+                                    LIMIT 1
+                                ) ult_ped
+                                    ON ult_ped.NUMERO_PEDIDO = ip.NUMERO_PEDIDO
+                            ) ult
+                            GROUP BY ult.ID_PRODUTO
+                        ) cli ON cli.ID_PRODUTO = p.ID_PRODUTO
+                    """
+                    order_parts.extend([
+                        "CASE WHEN cli.POSICAO_ULTIMO_PEDIDO IS NULL THEN 1 ELSE 0 END",
+                        "cli.POSICAO_ULTIMO_PEDIDO ASC",
+                    ])
+
+                order_parts.append("COALESCE(h15.QTDE_VENDIDA_15D, 0) DESC")
+            else:
+                order_parts.append("p.DESCRICAO_PRODUTO ASC")
 
             sql += " WHERE p.PRODUTO_ATIVO = 1"
 
-            if historico_join:
-                sql += " ORDER BY COALESCE(h.QTDE_VENDIDA, 0) DESC, p.DESCRICAO_PRODUTO"
-            else:
-                sql += " ORDER BY p.DESCRICAO_PRODUTO"
+            if not order_parts or order_parts[-1] != "p.DESCRICAO_PRODUTO ASC":
+                order_parts.append("p.DESCRICAO_PRODUTO ASC")
 
-            cursor.execute(sql)
+            sql += " ORDER BY " + ", ".join(order_parts)
+
+            cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
             cursor.close()
 
-            result = []
+            return [self._build_produto_dict(row) for row in rows]
 
-            for row in rows:
-                result.append(self._build_produto_dict(row))
-
-            return result
-        
         except Exception as ex:
             append_exception_log("produto.get_all_produtos", ex)
             raise
@@ -334,11 +385,11 @@ class ProdutoView:
         )
         tabelas = {row[0] for row in cursor.fetchall()}
 
-        if {"tb_pedido", "tb_item_pedido"}.issubset(tabelas):
-            return "tb_pedido", "tb_item_pedido"
-
         if {"tb_pedido_delivery", "tb_item_pedido_delivery"}.issubset(tabelas):
             return "tb_pedido_delivery", "tb_item_pedido_delivery"
+
+        if {"tb_pedido", "tb_item_pedido"}.issubset(tabelas):
+            return "tb_pedido", "tb_item_pedido"
 
         return None, None
 

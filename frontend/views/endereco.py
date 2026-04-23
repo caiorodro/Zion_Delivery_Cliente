@@ -115,7 +115,7 @@ class Endereco:
                     alignment=ft.alignment.top_center,
                     content=ft.Container(
                         width=760,
-                        padding=ft.padding.symmetric(horizontal=18, vertical=14),
+                        padding=ft.padding.symmetric(horizontal=16, vertical=12),
                         content=ft.Column(
                             scroll=ft.ScrollMode.AUTO,
                             spacing=16,
@@ -127,8 +127,6 @@ class Endereco:
                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN
                                 ),
                                 zDivider(),
-
-                                zDivider(),
                                 zLabel("Preencha os dados abaixo:"),
 
                                 # CEP em primeiro lugar (chave da pesquisa)
@@ -138,9 +136,9 @@ class Endereco:
                                 ft.Row([self.cb_uf, self.txt_cidade], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
 
                                 # Rua + número
-                                ft.Row([self.txt_rua, self.txt_numero], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
+                                ft.Row([self.txt_rua], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
                                 # Complemento
-                                ft.Row([self.txt_complemento], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
+                                ft.Row([self.txt_numero, self.txt_complemento], wrap=True, spacing=10, alignment=ft.MainAxisAlignment.START),
                                 # Bairro
                                 ft.Row([self.txt_bairro], wrap=True, alignment=ft.MainAxisAlignment.START),
                                 # Observações

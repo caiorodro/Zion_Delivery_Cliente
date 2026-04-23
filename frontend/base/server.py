@@ -41,10 +41,10 @@ class ZionAPI:
                     e.response.status_code,
                     (e.response.text or "")[:500],
                 )
-                raise
+                return None
             except Exception:
                 logger.exception("GET %s - erro inesperado", url)
-                raise
+                return None
         return None
 
     def _post(self, path: str, data: dict, retries: int = 3) -> Optional[dict]:
@@ -77,8 +77,14 @@ class ZionAPI:
 
     # ─── Produtos ───────────────────────────────────────────────
 
-    def download_produtos(self) -> List[dict]:
-        result = self._get("/produtos")
+    def download_produtos(self, cpf: str = "", telefone: str = "") -> List[dict]:
+        params = {}
+        if cpf:
+            params["cpf"] = cpf
+        if telefone:
+            params["telefone"] = telefone
+
+        result = self._get("/produtos", params=params or None)
         return result if result is not None else []
 
     def download_familias(self) -> List[dict]:

@@ -21,6 +21,7 @@ class Cardapio:
         self._indice_carregado = 0
         self._tam_pagina = 30
         self._carregando_pagina = False
+        self._ordenacao_inicial_aplicada = False
         self._init_controls()
         self._build_layout()
         self._carregar_familias()
@@ -142,8 +143,34 @@ class Cardapio:
         except Exception:
             pass
 
+    def _aplicar_ordenacao_inicial(self):
+        if self._ordenacao_inicial_aplicada:
+            return
+
+        self._ordenacao_inicial_aplicada = True
+
+        telefone = str(getattr(self.sacola.DADOS_CLIENTE, "TELEFONE", "") or "").strip()
+        cpf = str(getattr(self.sacola.DADOS_CLIENTE, "CPF", "") or "").strip()
+
+        if not telefone and not cpf:
+            try:
+                dados_salvos = self.page.client_storage.get("zion_cliente_v1")
+            except Exception:
+                dados_salvos = None
+
+            if isinstance(dados_salvos, dict):
+                telefone = str(dados_salvos.get("TELEFONE") or "").strip()
+                cpf = str(dados_salvos.get("CPF") or "").strip()
+
+        if telefone or cpf:
+            try:
+                CacheManager.download_e_salvar(cpf=cpf, telefone=telefone)
+            except Exception:
+                pass
+
     def _carregar_cardapio(self):
         self._show_progress(True)
+        self._aplicar_ordenacao_inicial()
 
         nome = (self.txt_pesq.value or "").strip()
         try:
@@ -241,9 +268,10 @@ class Cardapio:
                 height=182,
                 border_radius=8,
                 clip_behavior=ft.ClipBehavior.HARD_EDGE,
+                bgcolor="#ffffff",
                 content=ft.Image(
                     src_base64=foto_base64,
-                    fit=ft.ImageFit.COVER,
+                    fit=ft.ImageFit.CONTAIN,
                     width=288,
                     height=182,
                     error_content=ft.Container(

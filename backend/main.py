@@ -56,9 +56,9 @@ def get_token():
 # ─────────────────────────────────────────────
 
 @app.get("/produtos", tags=["Produtos"])
-async def listar_produtos():
+async def listar_produtos(cpf: str = "", telefone: str = ""):
     view = ProdutoView()
-    return await view.get_all_produtos()
+    return await view.get_all_produtos(cpf=cpf, telefone=telefone)
 
 @app.post("/produtos", tags=["Produtos"])
 def criar_produto(body: dict):
