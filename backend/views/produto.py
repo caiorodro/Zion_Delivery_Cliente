@@ -159,7 +159,7 @@ class ProdutoView:
             else:
                 order_parts.append("p.DESCRICAO_PRODUTO ASC")
 
-            sql += " WHERE p.PRODUTO_ATIVO = 1"
+            sql += f" WHERE p.PRODUTO_ATIVO = 1 AND p.{preco_column} > 0.00"
 
             if not order_parts or order_parts[-1] != "p.DESCRICAO_PRODUTO ASC":
                 order_parts.append("p.DESCRICAO_PRODUTO ASC")
