@@ -49,7 +49,8 @@ class ProdutoView:
             PRECO_DELIVERY=float(row[3]) if isinstance(row[3], Decimal) else (row[3] or 0.0),
             PRODUTO_ATIVO=row[4],
             FOTO_PRODUTO=foto_produto,
-            CODIGO_WABIZ=codigo_wabiz
+            CODIGO_WABIZ=codigo_wabiz,
+            ID_FAMILIA=row[1]
         ).__dict__
 
     def _default_value_by_type(self, data_type: str):

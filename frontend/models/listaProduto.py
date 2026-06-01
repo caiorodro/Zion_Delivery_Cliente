@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 @dataclass
 class ListaProduto:
     ID_PRODUTO: int
@@ -9,3 +8,4 @@ class ListaProduto:
     PRODUTO_ATIVO: int
     FOTO_PRODUTO: str = ""
     CODIGO_WABIZ: str = ""
+    ID_FAMILIA: int = 0

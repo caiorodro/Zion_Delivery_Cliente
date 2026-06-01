@@ -10,7 +10,7 @@ class Produto:
     PRODUTO_ATIVO: int
     FOTO_PRODUTO: Optional[str]
     CODIGO_WABIZ: str = ""
-
+    ID_FAMILIA: int = 0
 
 @dataclass
 class ProdutoCreate:
