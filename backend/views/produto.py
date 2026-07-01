@@ -11,11 +11,18 @@ from models.grade_produto import GradeProduto
 
 class ProdutoView:
 
+    _cached_preco_column = None
+    _cached_tabelas_historico = None
+    _cached_colunas_cliente = {}
+
     def __init__(self):
         self.qbase = qBase()
 
     def _get_preco_column(self, cursor) -> str:
         """Resolve a coluna de preco disponivel na tabela tb_produto."""
+        if ProdutoView._cached_preco_column:
+            return ProdutoView._cached_preco_column
+
         cursor.execute(
             """
                 SELECT COLUMN_NAME
@@ -30,7 +37,89 @@ class ProdutoView:
         row = cursor.fetchone()
         # Garante que não fique resultado pendente no cursor.
         cursor.fetchall()
-        return row[0] if row else "PRECO_BALCAO"
+        ProdutoView._cached_preco_column = row[0] if row else "PRECO_BALCAO"
+        return ProdutoView._cached_preco_column
+
+    def _find_ultimo_pedido_cliente(
+        self,
+        cursor,
+        tabela_pedido: str,
+        telefone_digits: str,
+        cpf_digits: str,
+    ):
+        """Busca o último pedido do cliente para priorizar produtos já comprados."""
+
+        candidatos = []
+        coluna_telefone, coluna_cpf = self._resolver_colunas_cliente_normalizadas(cursor, tabela_pedido)
+
+        if telefone_digits:
+            cursor.execute(
+                f"""
+                    SELECT ped.NUMERO_PEDIDO, ped.DATA_HORA
+                    FROM {tabela_pedido} ped
+                    WHERE COALESCE(ped.STATUS_PEDIDO, 0) <> 99
+                      AND {coluna_telefone} = %s
+                    ORDER BY ped.DATA_HORA DESC, ped.NUMERO_PEDIDO DESC
+                    LIMIT 1
+                """,
+                (telefone_digits,),
+            )
+            row = cursor.fetchone()
+            if row:
+                candidatos.append(row)
+
+        if cpf_digits:
+            cursor.execute(
+                f"""
+                    SELECT ped.NUMERO_PEDIDO, ped.DATA_HORA
+                    FROM {tabela_pedido} ped
+                    WHERE COALESCE(ped.STATUS_PEDIDO, 0) <> 99
+                      AND {coluna_cpf} = %s
+                    ORDER BY ped.DATA_HORA DESC, ped.NUMERO_PEDIDO DESC
+                    LIMIT 1
+                """,
+                (cpf_digits,),
+            )
+            row = cursor.fetchone()
+            if row:
+                candidatos.append(row)
+
+        if not candidatos:
+            return None
+
+        # Escolhe o pedido mais recente considerando DATA_HORA e NUMERO_PEDIDO como desempate.
+        candidatos.sort(key=lambda item: (item[1], item[0]), reverse=True)
+        return candidatos[0][0]
+
+    def _resolver_colunas_cliente_normalizadas(self, cursor, tabela_pedido: str):
+        if tabela_pedido in ProdutoView._cached_colunas_cliente:
+            return ProdutoView._cached_colunas_cliente[tabela_pedido]
+
+        cursor.execute(
+            """
+                SELECT COLUMN_NAME
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = %s
+                  AND COLUMN_NAME IN ('TELEFONE_CLIENTE_DIGITOS', 'CPF_CLIENTE_DIGITOS')
+            """,
+            (tabela_pedido,),
+        )
+        colunas = {row[0] for row in cursor.fetchall()}
+
+        coluna_telefone = (
+            "ped.TELEFONE_CLIENTE_DIGITOS"
+            if "TELEFONE_CLIENTE_DIGITOS" in colunas
+            else "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(ped.TELEFONE_CLIENTE, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '')"
+        )
+        coluna_cpf = (
+            "ped.CPF_CLIENTE_DIGITOS"
+            if "CPF_CLIENTE_DIGITOS" in colunas
+            else "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(ped.CPF_CLIENTE, ''), '.', ''), '-', ''), ' ', ''), '/', '')"
+        )
+
+        ProdutoView._cached_colunas_cliente[tabela_pedido] = (coluna_telefone, coluna_cpf)
+        return ProdutoView._cached_colunas_cliente[tabela_pedido]
 
     def _build_produto_dict(self, row) -> dict:
         foto_produto = ""
@@ -42,6 +131,8 @@ class ProdutoView:
             foto_produto = foto_raw.strip()
 
         codigo_wabiz = str(row[6]) if len(row) > 6 and row[6] else ""
+        em_ultimo_pedido = int(row[7]) if len(row) > 7 and row[7] is not None else 0
+        qtde_vendida_15d = int(row[8]) if len(row) > 8 and row[8] is not None else 0
 
         return Produto(
             ID_PRODUTO=row[0],
@@ -50,7 +141,9 @@ class ProdutoView:
             PRODUTO_ATIVO=row[4],
             FOTO_PRODUTO=foto_produto,
             CODIGO_WABIZ=codigo_wabiz,
-            ID_FAMILIA=row[1]
+            ID_FAMILIA=row[1],
+            EM_ULTIMO_PEDIDO=em_ultimo_pedido,
+            QTDE_VENDIDA_15D=qtde_vendida_15d,
         ).__dict__
 
     def _default_value_by_type(self, data_type: str):
@@ -82,6 +175,8 @@ class ProdutoView:
 
             cpf_digits = self._normalize_digits(cpf)
             telefone_digits = self._normalize_digits(telefone)
+            em_ultimo_pedido_expr = "0"
+            qtde_vendida_15d_expr = "0"
 
             sql = """
                 SELECT
@@ -90,15 +185,21 @@ class ProdutoView:
                     p.DESCRICAO_PRODUTO,
                     p.{preco_column},
                     p.PRODUTO_ATIVO,
-                    p.FOTO_PRODUTO,
-                    p.CODIGO_WABIZ
+                    p.CODIGO_WABIZ,
+                    {em_ultimo_pedido_expr} AS EM_ULTIMO_PEDIDO,
+                    {qtde_vendida_15d_expr} AS QTDE_VENDIDA_15D
                 FROM tb_produto p
-            """.format(preco_column=preco_column)
+            """.format(
+                preco_column=preco_column,
+                em_ultimo_pedido_expr=em_ultimo_pedido_expr,
+                qtde_vendida_15d_expr=qtde_vendida_15d_expr,
+            )
 
             params = []
             order_parts = []
 
             if tabela_pedido and tabela_item:
+                qtde_vendida_15d_expr = "COALESCE(h15.QTDE_VENDIDA_15D, 0)"
                 sql += f"""
                     LEFT JOIN (
                         SELECT
@@ -113,52 +214,40 @@ class ProdutoView:
                     ) h15 ON h15.ID_PRODUTO = p.ID_PRODUTO
                 """
 
-                filtros_cliente = []
-                if telefone_digits:
-                    filtros_cliente.append(
-                        "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(ped2.TELEFONE_CLIENTE, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = %s"
-                    )
-                    params.append(telefone_digits)
+                numero_ultimo_pedido = self._find_ultimo_pedido_cliente(
+                    cursor,
+                    tabela_pedido,
+                    telefone_digits,
+                    cpf_digits,
+                )
 
-                if cpf_digits:
-                    filtros_cliente.append(
-                        "REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(ped2.CPF_CLIENTE, ''), '.', ''), '-', ''), ' ', ''), '/', '') = %s"
-                    )
-                    params.append(cpf_digits)
-
-                if filtros_cliente:
-                    filtro_cliente_sql = " OR ".join(filtros_cliente)
+                if numero_ultimo_pedido is not None:
                     sql += f"""
                         LEFT JOIN (
                             SELECT
-                                ult.ID_PRODUTO,
-                                MIN(ult.ORDEM_ITEM) AS POSICAO_ULTIMO_PEDIDO
-                            FROM (
-                                SELECT
-                                    ip.ID_PRODUTO,
-                                    ip.ID_ITEM AS ORDEM_ITEM
-                                FROM {tabela_item} ip
-                                INNER JOIN (
-                                    SELECT ped2.NUMERO_PEDIDO
-                                    FROM {tabela_pedido} ped2
-                                    WHERE COALESCE(ped2.STATUS_PEDIDO, 0) <> 99
-                                      AND ({filtro_cliente_sql})
-                                    ORDER BY ped2.DATA_HORA DESC, ped2.NUMERO_PEDIDO DESC
-                                    LIMIT 1
-                                ) ult_ped
-                                    ON ult_ped.NUMERO_PEDIDO = ip.NUMERO_PEDIDO
-                            ) ult
-                            GROUP BY ult.ID_PRODUTO
+                                ip.ID_PRODUTO,
+                                MIN(ip.ID_ITEM) AS POSICAO_ULTIMO_PEDIDO
+                            FROM {tabela_item} ip
+                            WHERE ip.NUMERO_PEDIDO = %s
+                            GROUP BY ip.ID_PRODUTO
                         ) cli ON cli.ID_PRODUTO = p.ID_PRODUTO
                     """
+                    params.append(numero_ultimo_pedido)
                     order_parts.extend([
                         "CASE WHEN cli.POSICAO_ULTIMO_PEDIDO IS NULL THEN 1 ELSE 0 END",
                         "cli.POSICAO_ULTIMO_PEDIDO ASC",
                     ])
+                    em_ultimo_pedido_expr = "CASE WHEN cli.ID_PRODUTO IS NULL THEN 0 ELSE 1 END"
 
                 order_parts.append("COALESCE(h15.QTDE_VENDIDA_15D, 0) DESC")
             else:
                 order_parts.append("p.DESCRICAO_PRODUTO ASC")
+
+            sql = sql.format(
+                preco_column=preco_column,
+                em_ultimo_pedido_expr=em_ultimo_pedido_expr,
+                qtde_vendida_15d_expr=qtde_vendida_15d_expr,
+            )
 
             sql += f" WHERE p.PRODUTO_ATIVO = 1 AND p.{preco_column} > 0.00"
 
@@ -169,9 +258,41 @@ class ProdutoView:
 
             cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
+
+            # Busca imagens em uma segunda etapa para evitar carregar BLOB durante joins e ordenacao.
+            foto_map = {}
+            if rows:
+                produto_ids = [row[0] for row in rows]
+                placeholders = ", ".join(["%s"] * len(produto_ids))
+                cursor.execute(
+                    f"""
+                        SELECT ID_PRODUTO, FOTO_PRODUTO
+                        FROM tb_produto
+                        WHERE ID_PRODUTO IN ({placeholders})
+                    """,
+                    tuple(produto_ids),
+                )
+                foto_map = {row[0]: row[1] for row in cursor.fetchall()}
+
             cursor.close()
 
-            return [self._build_produto_dict(row) for row in rows]
+            produtos = []
+            for row in rows:
+                foto_raw = foto_map.get(row[0])
+                produto_row = (
+                    row[0],
+                    row[1],
+                    row[2],
+                    row[3],
+                    row[4],
+                    foto_raw,
+                    row[5],
+                    row[6],
+                    row[7],
+                )
+                produtos.append(self._build_produto_dict(produto_row))
+
+            return produtos
 
         except Exception as ex:
             append_exception_log("produto.get_all_produtos", ex)
@@ -371,6 +492,9 @@ class ProdutoView:
 
     def _resolver_tabelas_historico(self, cursor):
         """Resolve os nomes das tabelas de pedidos e itens disponíveis no banco."""
+        if ProdutoView._cached_tabelas_historico is not None:
+            return ProdutoView._cached_tabelas_historico
+
         cursor.execute(
             """
                 SELECT TABLE_NAME
@@ -387,12 +511,15 @@ class ProdutoView:
         tabelas = {row[0] for row in cursor.fetchall()}
 
         if {"tb_pedido_delivery", "tb_item_pedido_delivery"}.issubset(tabelas):
-            return "tb_pedido_delivery", "tb_item_pedido_delivery"
+            ProdutoView._cached_tabelas_historico = ("tb_pedido_delivery", "tb_item_pedido_delivery")
+            return ProdutoView._cached_tabelas_historico
 
         if {"tb_pedido", "tb_item_pedido"}.issubset(tabelas):
-            return "tb_pedido", "tb_item_pedido"
+            ProdutoView._cached_tabelas_historico = ("tb_pedido", "tb_item_pedido")
+            return ProdutoView._cached_tabelas_historico
 
-        return None, None
+        ProdutoView._cached_tabelas_historico = (None, None)
+        return ProdutoView._cached_tabelas_historico
 
     async def get_all_familias(self) -> List[dict]:
         """Retorna todas as famílias de produtos ativas."""

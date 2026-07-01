@@ -16,12 +16,15 @@ class Cardapio:
         self.page = page
         self.sacola = sacola
         self.panel = None
-        self._qtde_map: dict = {}   # ID_PRODUTO -> TextField
+        self._qtde_map: dict = {}   # chave do produto -> TextField
         self._produtos_filtrados = []
         self._indice_carregado = 0
         self._tam_pagina = 30
+        self._limite_atalhos_ultimo_pedido = 6
+        self._limite_atalhos_historico = 6
         self._carregando_pagina = False
         self._ordenacao_inicial_aplicada = False
+        self._cliente_identificado = False
         self._init_controls()
         self._build_layout()
         self._carregar_familias()
@@ -86,6 +89,39 @@ class Cardapio:
             visible=False
         )
 
+        self.lbl_recentes = zLabel("Sugestoes rapidas", size=15, bold=True)
+        self.lbl_ultimo_pedido = zLabel("Pedir novamente", size=13, bold=True)
+        self.row_ultimo_pedido = ft.Row(
+            controls=[],
+            wrap=True,
+            spacing=8,
+            run_spacing=8,
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
+        self.lbl_historico = zLabel("Mais vendidos da loja", size=13, bold=True)
+        self.row_historico = ft.Row(
+            controls=[],
+            wrap=True,
+            spacing=8,
+            run_spacing=8,
+            alignment=ft.MainAxisAlignment.CENTER,
+        )
+        self.ctn_recentes = ft.Container(
+            visible=False,
+            padding=ft.padding.only(top=4, bottom=4),
+            content=ft.Column(
+                spacing=8,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    self.lbl_recentes,
+                    self.lbl_ultimo_pedido,
+                    self.row_ultimo_pedido,
+                    self.lbl_historico,
+                    self.row_historico,
+                ],
+            ),
+        )
+
     def _build_layout(self):
         bg = AppConfig.BG_COLOR
 
@@ -119,6 +155,7 @@ class Cardapio:
                                     spacing=8,
                                     alignment=ft.MainAxisAlignment.CENTER,
                                 ),
+                                self.ctn_recentes,
                                 self.col_cardapio,
                             ],
                         ),
@@ -162,11 +199,15 @@ class Cardapio:
                 telefone = str(dados_salvos.get("TELEFONE") or "").strip()
                 cpf = str(dados_salvos.get("CPF") or "").strip()
 
+        self._cliente_identificado = bool(telefone or cpf)
+
         if telefone or cpf:
             try:
                 CacheManager.download_e_salvar(cpf=cpf, telefone=telefone)
             except Exception:
                 pass
+
+        self._atualizar_botoes_recentes()
 
     def _carregar_cardapio(self):
         self._show_progress(True)
@@ -183,6 +224,7 @@ class Cardapio:
         self._indice_carregado = 0
         self._qtde_map.clear()
         self.col_cardapio.controls.clear()
+        self._atualizar_botoes_recentes()
         self._renderizar_proxima_pagina(scroll_top=True)
         self._garantir_rolagem_inicial()
 
@@ -240,6 +282,140 @@ class Cardapio:
         if limite > 0 and posicao >= (limite - 180):
             self._carregar_proxima_pagina()
 
+    def _atualizar_botoes_recentes(self):
+        produtos_base = CacheManager.get_produtos()
+
+        if not produtos_base:
+            self.row_ultimo_pedido.controls = []
+            self.row_historico.controls = []
+            self.lbl_ultimo_pedido.visible = False
+            self.row_ultimo_pedido.visible = False
+            self.lbl_historico.visible = False
+            self.row_historico.visible = False
+            self.ctn_recentes.visible = False
+            try:
+                self.row_ultimo_pedido.update()
+                self.row_historico.update()
+                self.ctn_recentes.update()
+            except Exception:
+                pass
+            return
+
+        codigos_usados = set()
+        ultimo_pedido = []
+        mais_vendidos = []
+
+        for produto in produtos_base:
+            produto_key = self._get_produto_key(produto)
+            if produto_key in codigos_usados:
+                continue
+
+            if int(getattr(produto, "EM_ULTIMO_PEDIDO", 0) or 0) == 1:
+                codigos_usados.add(produto_key)
+                ultimo_pedido.append(produto)
+                if len(ultimo_pedido) >= self._limite_atalhos_ultimo_pedido:
+                    break
+
+        if ultimo_pedido:
+            self.row_ultimo_pedido.controls = [
+                self._criar_chip_produto_recente(produto, destaque="ultimo") for produto in ultimo_pedido
+            ]
+            self.row_historico.controls = []
+            self.lbl_ultimo_pedido.visible = True
+            self.row_ultimo_pedido.visible = True
+            self.lbl_historico.visible = False
+            self.row_historico.visible = False
+            self.ctn_recentes.visible = True
+        else:
+            for produto in produtos_base:
+                produto_key = self._get_produto_key(produto)
+                if produto_key in codigos_usados:
+                    continue
+
+                if int(getattr(produto, "QTDE_VENDIDA_15D", 0) or 0) > 0:
+                    codigos_usados.add(produto_key)
+                    mais_vendidos.append(produto)
+                    if len(mais_vendidos) >= self._limite_atalhos_historico:
+                        break
+
+            self.row_ultimo_pedido.controls = []
+            self.row_historico.controls = [
+                self._criar_chip_produto_recente(produto, destaque="historico") for produto in mais_vendidos
+            ]
+            self.lbl_ultimo_pedido.visible = False
+            self.row_ultimo_pedido.visible = False
+            self.lbl_historico.visible = bool(mais_vendidos)
+            self.row_historico.visible = bool(mais_vendidos)
+            self.ctn_recentes.visible = bool(mais_vendidos)
+
+        try:
+            self.lbl_ultimo_pedido.update()
+            self.row_ultimo_pedido.update()
+            self.lbl_historico.update()
+            self.row_historico.update()
+            self.ctn_recentes.update()
+        except Exception:
+            pass
+
+    def _criar_chip_produto_recente(self, produto, destaque: str) -> ft.Control:
+        descricao = str(getattr(produto, "DESCRICAO_PRODUTO", "") or "").strip()
+        texto = descricao if len(descricao) <= 24 else f"{descricao[:21].rstrip()}..."
+        preco = format_currency(getattr(produto, "PRECO_DELIVERY", 0) or 0)
+        badge_texto = "Ultimo pedido" if destaque == "ultimo" else "Sugestao"
+        badge_bg = "#ead3c4" if destaque == "ultimo" else "#dbe7ea"
+
+        return ft.Container(
+            width=174,
+            bgcolor="#ffffff",
+            border=ft.border.all(1, AppConfig.BTN_PRIMARY),
+            border_radius=16,
+            padding=ft.padding.symmetric(horizontal=12, vertical=10),
+            ink=True,
+            on_click=lambda e, p=produto: self._adicionar_produto_recente(p),
+            tooltip=f"Adicionar {descricao}",
+            content=ft.Column(
+                spacing=6,
+                horizontal_alignment=ft.CrossAxisAlignment.START,
+                controls=[
+                    ft.Container(
+                        bgcolor=badge_bg,
+                        border_radius=12,
+                        padding=ft.padding.symmetric(horizontal=8, vertical=3),
+                        content=ft.Text(
+                            badge_texto,
+                            size=10,
+                            color=AppConfig.FONT_COLOR,
+                            weight=ft.FontWeight.W_600,
+                        ),
+                    ),
+                    ft.Text(
+                        texto,
+                        size=13,
+                        color=AppConfig.FONT_COLOR,
+                        weight=ft.FontWeight.BOLD,
+                        max_lines=2,
+                        overflow=ft.TextOverflow.ELLIPSIS,
+                    ),
+                    ft.Text(
+                        preco,
+                        size=12,
+                        color=AppConfig.FONT_COLOR,
+                    ),
+                ],
+            ),
+        )
+
+    def _adicionar_produto_recente(self, produto):
+        produto_key = self._get_produto_key(produto)
+        txt_qtde = self._qtde_map.get(produto_key)
+        if txt_qtde is not None:
+            self._adicionar(produto, txt_qtde)
+            return
+
+        existing = [it for it in self.sacola.ITEMS if self._get_item_key(it) == produto_key]
+        qtde = (existing[0].QTDE if existing else 0) + 1
+        self._atualizar_item_sacola(produto, qtde)
+
     def _get_row_card(self, produto) -> ft.Row:
         return ft.Row(
             controls=[self._get_card(produto)],
@@ -293,7 +469,8 @@ class Cardapio:
 
     def _get_card(self, produto) -> ft.Container:
         # Quantidade atual na sacola
-        existing = [it for it in self.sacola.ITEMS if it.CODIGO_WABIZ == produto.CODIGO_WABIZ]
+        produto_key = self._get_produto_key(produto)
+        existing = [it for it in self.sacola.ITEMS if self._get_item_key(it) == produto_key]
         qtde_atual = existing[0].QTDE if existing else 0
 
         txt_qtde = ft.TextField(
@@ -307,7 +484,7 @@ class Cardapio:
             border_color=AppConfig.FONT_COLOR,
             on_change=lambda e, p=produto: self._on_change_qtde(e, p),
         )
-        self._qtde_map[produto.CODIGO_WABIZ] = txt_qtde
+        self._qtde_map[produto_key] = txt_qtde
 
         btn_minus = ft.IconButton(
             icon=ft.icons.REMOVE_CIRCLE_OUTLINE,
@@ -406,7 +583,8 @@ class Cardapio:
         self._atualizar_item_sacola(produto, qtde)
 
     def _atualizar_item_sacola(self, produto, qtde: int):
-        existing = [it for it in self.sacola.ITEMS if it.CODIGO_WABIZ == produto.CODIGO_WABIZ]
+        produto_key = self._get_produto_key(produto)
+        existing = [it for it in self.sacola.ITEMS if self._get_item_key(it) == produto_key]
         total_item = round(qtde * produto.PRECO_DELIVERY, 2)
 
         if existing:
@@ -437,8 +615,8 @@ class Cardapio:
 
     def resetar_qtdes(self):
         """Reseta quantidades exibidas no cardápio conforme a sacola atual."""
-        for codigo_wabiz, txt in self._qtde_map.items():
-            existing = [it for it in self.sacola.ITEMS if it.CODIGO_WABIZ == codigo_wabiz]
+        for produto_key, txt in self._qtde_map.items():
+            existing = [it for it in self.sacola.ITEMS if self._get_item_key(it) == produto_key]
             txt.value = str(existing[0].QTDE if existing else 0)
             try:
                 txt.update()
@@ -459,3 +637,9 @@ class Cardapio:
             self.progress.update()
         except Exception:
             pass
+
+    def _get_produto_key(self, produto) -> str:
+        return f"produto:{int(getattr(produto, 'ID_PRODUTO', 0) or 0)}"
+
+    def _get_item_key(self, item) -> str:
+        return f"produto:{int(getattr(item, 'ID_PRODUTO', 0) or 0)}"

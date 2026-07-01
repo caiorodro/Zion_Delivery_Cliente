@@ -11,6 +11,8 @@ class Produto:
     FOTO_PRODUTO: Optional[str]
     CODIGO_WABIZ: str = ""
     ID_FAMILIA: int = 0
+    EM_ULTIMO_PEDIDO: int = 0
+    QTDE_VENDIDA_15D: int = 0
 
 @dataclass
 class ProdutoCreate:

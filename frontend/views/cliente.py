@@ -5,6 +5,7 @@ from frontend.models.dadosCliente import DadosCliente
 from frontend.style.zControls import (
     zButton, zTextField, zLabel, zTitle, zDivider, zSnackBar
 )
+from frontend.utils.currency_formatter import format_currency
 
 
 class Cliente:
@@ -73,6 +74,8 @@ class Cliente:
             width=180
         )
 
+        self.lbl_total_pedido = zLabel(format_currency(self.sacola.total_pedido), size=16, bold=True)
+
     def _build_layout(self):
         bg = AppConfig.BG_COLOR
 
@@ -99,6 +102,11 @@ class Cliente:
                                 ft.Row([self.txt_obs], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
                                 ft.Row([self.chk_cpf], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
                                 ft.Row([self.txt_cpf], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
+                                zDivider(),
+                                ft.Row(
+                                    [zLabel("Total do pedido:", bold=True), self.lbl_total_pedido],
+                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                                ),
                                 ft.Row(
                                     [self.btn_voltar, self.btn_proximo],
                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN
@@ -164,12 +172,14 @@ class Cliente:
         self.chk_cpf.value = cpf_no_cupom
         self.txt_cpf.value = cpf
         self.txt_cpf.visible = cpf_no_cupom
+        self.lbl_total_pedido.value = format_currency(self.sacola.total_pedido)
         try:
             self.txt_nome.update()
             self.txt_telefone.update()
             self.txt_obs.update()
             self.chk_cpf.update()
             self.txt_cpf.update()
+            self.lbl_total_pedido.update()
         except Exception:
             pass
 

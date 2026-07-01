@@ -5,7 +5,7 @@ Ajuste as variáveis abaixo conforme o ambiente.
 
 # ── API Zion Delivery (fonte dos pedidos pendentes) ──────────────────────────
 #URL_ZION = "https://ziondelivery.app.br/"
-URL_ZION = "http://127.0.0.1:8000/"
+URL_ZION = "http://127.0.0.1:8000"
 #URL_ZION = "https://servicebeervt.ziondelivery.app.br/"
 
 # ── API PDV Zion (destino - sistema interno) ─────────────────────────────────
@@ -21,4 +21,4 @@ ID_TRIBUTO_PADRAO = 1
 STATUS_PEDIDO_ACEITO = 8                    # 8 = pedido aceito/lançado no PDV
 
 # ── Controle do loop de polling ───────────────────────────────────────────────
-INTERVALO_CONSULTA_SEGUNDOS = 30            # frequência de consulta aos pedidos pendentes
+INTERVALO_CONSULTA_SEGUNDOS = 15            # frequência de consulta aos pedidos pendentes

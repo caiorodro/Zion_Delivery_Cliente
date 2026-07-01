@@ -118,7 +118,7 @@ class Confirmacao:
                                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                                 ft.Row([zLabel("Taxa de entrega:", bold=True), self.lbl_taxa],
                                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Row([zLabel("TOTAL:", bold=True, size=18), self.lbl_total],
+                                    ft.Row([zLabel("Total do pedido:", bold=True, size=18), self.lbl_total],
                                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                                 zDivider(),
 
@@ -300,6 +300,9 @@ class Confirmacao:
 
             time.sleep(AppConfig.POLLING_INTERVAL)
 
+            if self._numero_pedido is None:
+                continue
+            
             try:
                 status_data = api.get_status_pedido(self._numero_pedido)
             except Exception:

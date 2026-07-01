@@ -1,7 +1,8 @@
 import flet as ft
 
 from frontend.cfg.config import AppConfig
-from frontend.models.sacola import PagamentoPedido
+from frontend.models.sacola import PagamentoPedido, Sacola
+
 from frontend.style.zControls import (
     zButton, zTextField, zLabel, zTitle, zCard, zDivider, zSnackBar
 )
@@ -13,7 +14,7 @@ class Pagamento:
 
     FORMAS = ["CARTÃO", "DINHEIRO", "PIX"]
 
-    def __init__(self, page: ft.Page, sacola):
+    def __init__(self, page: ft.Page, sacola: Sacola):
         self.page = page
         self.sacola = sacola
         self.panel = None
@@ -29,7 +30,8 @@ class Pagamento:
                     ft.Radio(
                         value="CARTÃO",
                         label="💳  Cartão",
-                        label_style=ft.TextStyle(color=AppConfig.FONT_COLOR, size=16)
+                        label_style=ft.TextStyle(color=AppConfig.FONT_COLOR, size=16),
+                        
                     ),
                     ft.Radio(
                         value="DINHEIRO",
@@ -82,6 +84,8 @@ class Pagamento:
             width=200
         )
 
+        self.lbl_total_pedido = zLabel(format_currency(self.sacola.total_pedido), size=16, bold=True)
+
     def _build_layout(self):
         bg = AppConfig.BG_COLOR
 
@@ -106,6 +110,11 @@ class Pagamento:
                                 self.rg_pagamento,
                                 self.row_troco,
                                 ft.Row([self.txt_troco], wrap=True, alignment=ft.MainAxisAlignment.CENTER),
+                                zDivider(),
+                                ft.Row(
+                                    [zLabel("Total do pedido:", bold=True), self.lbl_total_pedido],
+                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN
+                                ),
                                 ft.Row(
                                     [self.btn_voltar, self.btn_proximo],
                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN
@@ -122,9 +131,11 @@ class Pagamento:
     def _on_pagamento_change(self, e):
         is_dinheiro = self.rg_pagamento.value == "DINHEIRO"
         self.row_troco.visible = is_dinheiro
+
         if not is_dinheiro:
             self.chk_troco.value = False
             self.txt_troco.visible = False
+
         try:
             self.row_troco.update()
             self.txt_troco.update()
@@ -145,13 +156,23 @@ class Pagamento:
             return
 
         troco_para = 0.0
+
         if forma == "DINHEIRO" and self.chk_troco.value:
             try:
                 troco_para = float((self.txt_troco.value or "0").replace(",", "."))
+
                 if troco_para <= 0:
                     self._show_snack("Informe um valor válido para o troco.", error=True)
                     self.txt_troco.focus()
                     return
+
+                totalPedido = sum([item.TOTAL_ITEM for item in self.sacola.ITEMS]) + self.sacola.TAXA_ENTREGA
+
+                if troco_para <= totalPedido:
+                    self._show_snack(f"O campo [TROCO PARA] deve ser maior que o total do pedido: {totalPedido}.", error=True)
+                    self.txt_troco.focus()
+                    return
+
             except ValueError:
                 self._show_snack("Valor de troco inválido.", error=True)
                 self.txt_troco.focus()
@@ -167,14 +188,25 @@ class Pagamento:
     def carregar_dados(self):
         """Preenche campos com dados já salvos na sacola."""
         pg = self.sacola.PAGAMENTO
+        self.lbl_total_pedido.value = format_currency(self.sacola.total_pedido)
         self.rg_pagamento.value = pg.FORMA_PAGAMENTO
         is_dinheiro = pg.FORMA_PAGAMENTO == "DINHEIRO"
         self.row_troco.visible = is_dinheiro
+
         if pg.TROCO_PARA > 0:
             self.chk_troco.value = True
             self.txt_troco.visible = True
             self.txt_troco.value = str(pg.TROCO_PARA)
+
+        if not is_dinheiro:
+            try:
+                self.txt_troco.visible = False
+                self.txt_troco.update()
+            except:
+                pass
+
         try:
+            self.lbl_total_pedido.update()
             self.rg_pagamento.update()
             self.row_troco.update()
             self.txt_troco.update()
