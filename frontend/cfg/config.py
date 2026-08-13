@@ -1,6 +1,17 @@
+import os
+
+
 class AppConfig:
     # URL da API backend
-    URL_API = "http://localhost:8000"
+    # Prioridade:
+    # 1) ZION_URL_API
+    # 2) URL_API
+    # 3) fallback local
+    URL_API = (
+        os.getenv("ZION_URL_API")
+        or os.getenv("URL_API")
+        or "http://localhost:8000"
+    ).rstrip("/")
 
     # Cores do tema
     BG_COLOR = "#c6d0d4"
@@ -33,4 +44,4 @@ class AppConfig:
     LOG_LEVEL = "INFO"
 
     # Google Maps Geocoding API
-    GOOGLE_MAPS_API_KEY = "AIzaSyDhbR2xlxpQ2TK05gmpLBTvJRKwqvd8GVk"
+    GOOGLE_MAPS_API_KEY = "AIzaSyBFfl6HmN9U8QuAU9xIejjhkn46EkZNSPY"

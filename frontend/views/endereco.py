@@ -235,22 +235,30 @@ class Endereco:
         api_key = self._get_google_api_key()
         if not api_key:
             return None
+        
+        #curl -sS "https://maps.googleapis.com/maps/api/geocode/json?address=27966562&key=AIzaSyDhbR2xlxpQ2TK05gmpLBTvJRKwqvd8GVk&region=br&language=pt-BR"
 
         url = "https://maps.googleapis.com/maps/api/geocode/json"
-        params = {
-            "address": cep_numerico,
-            "key": api_key,
-            "region": "br",
-            "language": "pt-BR",
-        }
+        cep_formatado = f"{cep_numerico[:5]}-{cep_numerico[5:]}"
+        requests_plan = [
+            {
+                "address": cep_numerico,
+                "key": api_key,
+                "region": "br",
+                "language": "pt-BR"
+            }
+        ]
 
-        try:
-            resp = requests.get(url, params=params, timeout=12)
 
-            if resp.status_code != 200:
-                return None
+            # {
+            #     "address": f"{cep_formatado}, Brasil",
+            #     "key": api_key,
+            #     "region": "br",
+            #     "language": "pt-BR",
+            #     "components": f"country:BR|postal_code:{cep_formatado}",
+            # },
 
-            payload = resp.json()
+        def _parse_payload(payload: dict) -> Optional[dict]:
             if not isinstance(payload, dict):
                 return None
 
@@ -301,6 +309,40 @@ class Endereco:
                 "UF": uf,
                 "CIDADE": cidade,
             }
+
+        try:
+            debug_attempts = []
+            for params in requests_plan:
+                resp = requests.get(url, params=params, timeout=12)
+                attempt_debug = {
+                    "request": params,
+                    "http_status": resp.status_code,
+                }
+
+                if resp.status_code != 200:
+                    debug_attempts.append(attempt_debug)
+                    continue
+
+                payload = resp.json()
+                if isinstance(payload, dict):
+                    attempt_debug["google_status"] = payload.get("status")
+                    if payload.get("error_message"):
+                        attempt_debug["error_message"] = payload.get("error_message")
+                debug_attempts.append(attempt_debug)
+
+                endereco = _parse_payload(payload)
+                if endereco:
+                    with open('/tmp/cep_google_request.json', 'w', encoding='utf-8') as f:
+                        json.dump({"attempts": [a.get("request") for a in debug_attempts]}, f, ensure_ascii=False, indent=2)
+                    with open('/tmp/cep_google_response.json', 'w', encoding='utf-8') as f:
+                        json.dump({"attempts": debug_attempts, "last_payload": payload}, f, ensure_ascii=False, indent=2)
+                    return endereco
+
+            with open('/tmp/cep_google_request.json', 'w', encoding='utf-8') as f:
+                json.dump({"attempts": [a.get("request") for a in debug_attempts]}, f, ensure_ascii=False, indent=2)
+            with open('/tmp/cep_google_response.json', 'w', encoding='utf-8') as f:
+                json.dump({"attempts": debug_attempts}, f, ensure_ascii=False, indent=2)
+            return None
         except Exception:
             return None
 
