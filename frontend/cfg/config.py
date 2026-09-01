@@ -14,8 +14,8 @@ class AppConfig:
     ).rstrip("/")
 
     # Cores do tema
-    BG_COLOR = "#c6d0d4"
-    FONT_COLOR = "#874531"
+    BG_COLOR = "#ffffff"
+    FONT_COLOR = "#333333"
     BTN_PRIMARY = "#874531"
     BTN_TEXT = "#ffffff"
     CARD_BG = "#ffffff"

@@ -1,3 +1,5 @@
+import threading
+
 import flet as ft
 
 from frontend.base.cache import CacheManager
@@ -25,9 +27,11 @@ class Cardapio:
         self._carregando_pagina = False
         self._ordenacao_inicial_aplicada = False
         self._cliente_identificado = False
+        self._id_familia_sel = 0
+        self._menu_aberto = False
         self._init_controls()
         self._build_layout()
-        self._carregar_familias()
+        self._build_menu_familias()
         self._carregar_cardapio()
 
     # ─── Inicialização ──────────────────────────────────────────
@@ -37,22 +41,27 @@ class Cardapio:
             label="Pesquisar produto...",
             width=260,
             autofocus=True,
+            on_change=lambda e: self._on_change_busca(),
             on_submit=lambda e: self._carregar_cardapio()
         )
+        self._busca_seq = 0
 
-        familias = CacheManager.get_familias()
-        opcoes = [ft.dropdown.Option(key=0, text="Todas as famílias")]
-        opcoes += [
-            ft.dropdown.Option(key=f.ID_FAMILIA, text=f.DESCRICAO_FAMILIA)
-            for f in familias
-        ]
-        self.cb_familia = zDropdown(
-            label="Família",
-            options=opcoes,
-            width=315,
-            on_change=lambda e: self._carregar_cardapio()
+        self.btn_limpar_pesq = ft.IconButton(
+            icon=ft.icons.CLOSE,
+            icon_size=18,
+            icon_color=AppConfig.FONT_COLOR,
+            tooltip="Limpar busca",
+            visible=False,
+            on_click=lambda e: self._limpar_busca(),
         )
-        self.cb_familia.value = 0
+        self.txt_pesq.suffix = self.btn_limpar_pesq
+
+        self.menu_familias = ft.Column(
+            controls=[],
+            spacing=6,
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
+        )
 
         self.btn_pesq = ft.IconButton(
             icon=ft.icons.SEARCH,
@@ -60,6 +69,13 @@ class Cardapio:
             icon_color="#ffffff",
             tooltip="Pesquisar",
             on_click=lambda e: self._carregar_cardapio()
+        )
+
+        self.btn_menu = ft.IconButton(
+            icon=ft.icons.MENU,
+            icon_color=AppConfig.BTN_PRIMARY,
+            tooltip="Categorias",
+            on_click=lambda e: self._toggle_menu(),
         )
 
         self.btn_sacola = ft.ElevatedButton(
@@ -125,6 +141,33 @@ class Cardapio:
     def _build_layout(self):
         bg = AppConfig.BG_COLOR
 
+        self.menu_lateral = ft.Container(
+            width=210,
+            visible=self._menu_aberto,
+            padding=ft.padding.only(right=12, top=4),
+            content=ft.Column(
+                expand=True,
+                spacing=10,
+                controls=[
+                    zLabel("Categorias", size=15, bold=True),
+                    self.menu_familias,
+                ],
+            ),
+        )
+        self.divisor_menu = ft.VerticalDivider(
+            width=1, color=AppConfig.FONT_COLOR, visible=self._menu_aberto,
+        )
+
+        conteudo = ft.Column(
+            expand=True,
+            spacing=10,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                self.ctn_recentes,
+                self.col_cardapio,
+            ],
+        )
+
         self.panel = ft.View(
             route="/cardapio",
             bgcolor=bg,
@@ -134,29 +177,39 @@ class Cardapio:
                     expand=True,
                     alignment=ft.alignment.top_center,
                     content=ft.Container(
-                        width=760,
+                        width=940,
                         padding=ft.padding.symmetric(horizontal=16, vertical=12),
                         content=ft.Column(
                             expand=True,
                             spacing=10,
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
                                 ft.Row(
                                     [
-                                        zTitle("🍺  Cardápio"),
+                                        ft.Row(
+                                            [self.btn_menu, zTitle("🍺  Cardápio")],
+                                            spacing=4,
+                                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                                        ),
                                         self.btn_sacola,
                                     ],
                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN
                                 ),
                                 zDivider(),
                                 ft.Row(
-                                    [self.cb_familia, self.txt_pesq, self.btn_pesq, self.progress],
+                                    [self.txt_pesq, self.btn_pesq, self.progress],
                                     wrap=True,
                                     spacing=8,
-                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    alignment=ft.MainAxisAlignment.START,
                                 ),
-                                self.ctn_recentes,
-                                self.col_cardapio,
+                                ft.Row(
+                                    expand=True,
+                                    vertical_alignment=ft.CrossAxisAlignment.START,
+                                    controls=[
+                                        self.menu_lateral,
+                                        self.divisor_menu,
+                                        ft.Container(expand=True, content=conteudo),
+                                    ],
+                                ),
                             ],
                         ),
                     ),
@@ -166,19 +219,59 @@ class Cardapio:
 
     # ─── Carregamento ───────────────────────────────────────────
 
-    def _carregar_familias(self):
+    def _build_menu_familias(self):
         familias = CacheManager.get_familias()
-        opcoes = [ft.dropdown.Option(key=0, text="Todas as famílias")]
-        opcoes += [
-            ft.dropdown.Option(key=f.ID_FAMILIA, text=f.DESCRICAO_FAMILIA)
-            for f in familias
+        itens = [(0, "Todas as famílias")]
+        itens += [(f.ID_FAMILIA, f.DESCRICAO_FAMILIA) for f in familias]
+        self.menu_familias.controls = [
+            self._criar_btn_familia(id_familia, descricao)
+            for id_familia, descricao in itens
         ]
-        self.cb_familia.options = opcoes
-        self.cb_familia.value = 0
         try:
-            self.cb_familia.update()
+            self.menu_familias.update()
         except Exception:
             pass
+
+    def _criar_btn_familia(self, id_familia: int, descricao: str) -> ft.Control:
+        selecionado = int(id_familia or 0) == int(self._id_familia_sel or 0)
+        return ft.Container(
+            width=200,
+            bgcolor=AppConfig.BTN_PRIMARY if selecionado else "#ffffff",
+            border=ft.border.all(1, AppConfig.BTN_PRIMARY),
+            border_radius=8,
+            padding=ft.padding.symmetric(horizontal=14, vertical=10),
+            ink=True,
+            on_click=lambda e, i=id_familia: self._selecionar_familia(i),
+            content=ft.Text(
+                descricao,
+                size=14,
+                color="#ffffff" if selecionado else AppConfig.FONT_COLOR,
+                weight=ft.FontWeight.BOLD,
+                max_lines=2,
+                overflow=ft.TextOverflow.ELLIPSIS,
+            ),
+        )
+
+    def _selecionar_familia(self, id_familia: int):
+        self._id_familia_sel = int(id_familia or 0)
+        self._menu_aberto = False
+        self._build_menu_familias()
+        self._aplicar_estado_menu()
+        self._carregar_cardapio()
+
+    def _toggle_menu(self):
+        self._menu_aberto = not self._menu_aberto
+        self._aplicar_estado_menu()
+
+    def _aplicar_estado_menu(self):
+        self.menu_lateral.visible = self._menu_aberto
+        self.divisor_menu.visible = self._menu_aberto
+        self.btn_menu.icon = ft.icons.MENU_OPEN if self._menu_aberto else ft.icons.MENU
+        for ctrl in (self.menu_lateral, self.divisor_menu, self.btn_menu):
+            try:
+                ctrl.update()
+            except Exception:
+                pass
 
     def _aplicar_ordenacao_inicial(self):
         if self._ordenacao_inicial_aplicada:
@@ -209,15 +302,51 @@ class Cardapio:
 
         self._atualizar_botoes_recentes()
 
+    def _on_change_busca(self):
+        """Filtra enquanto o usuario digita, com um pequeno atraso (debounce)."""
+        tem_texto = bool((self.txt_pesq.value or "").strip())
+        if self.btn_limpar_pesq.visible != tem_texto:
+            self.btn_limpar_pesq.visible = tem_texto
+            try:
+                self.btn_limpar_pesq.update()
+            except Exception:
+                pass
+
+        self._busca_seq += 1
+        seq = self._busca_seq
+
+        def _disparar():
+            if seq == self._busca_seq:
+                self._carregar_cardapio()
+
+        timer = threading.Timer(0.35, _disparar)
+        timer.daemon = True
+        timer.start()
+
+    def _limpar_busca(self):
+        """Limpa o campo de busca e recarrega o cardapio completo."""
+        self._busca_seq += 1  # cancela qualquer debounce pendente
+        self.txt_pesq.value = ""
+        self.btn_limpar_pesq.visible = False
+        try:
+            self.txt_pesq.update()
+            self.btn_limpar_pesq.update()
+        except Exception:
+            pass
+        self._carregar_cardapio()
+
     def _carregar_cardapio(self):
         self._show_progress(True)
         self._aplicar_ordenacao_inicial()
 
         nome = (self.txt_pesq.value or "").strip()
-        try:
-            id_familia = int(self.cb_familia.value or 0)
-        except (ValueError, TypeError):
-            id_familia = 0
+
+        # Busca por texto livre ignora o filtro de familia: volta para "Todas as familias".
+        if nome and int(self._id_familia_sel or 0) != 0:
+            self._id_familia_sel = 0
+            self._build_menu_familias()
+
+        id_familia = int(self._id_familia_sel or 0)
 
         lista = CacheManager.filtrar_produtos(nome=nome, id_familia=id_familia)
         self._produtos_filtrados = lista
@@ -537,7 +666,12 @@ class Cardapio:
             padding=12,
             width=320,
             height=336,
-            shadow=ft.BoxShadow(spread_radius=1, blur_radius=4, color=ft.colors.GREY_300),
+            shadow=ft.BoxShadow(
+                spread_radius=0,
+                blur_radius=10,
+                color=ft.colors.with_opacity(0.28, ft.colors.BLACK),
+                offset=ft.Offset(-5, 5),
+            ),
         )
 
     # ─── Sacola ─────────────────────────────────────────────────
